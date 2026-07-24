@@ -81,3 +81,16 @@ npm run tauri build
 - **Desktop Runtime**: Tauri v2, Rust (Tokio WebSocket, Global Shortcut plugin)
 - **Chrome Extension**: Manifest V3, WebSockets API, MediaSession API
 - **Lyrics API**: LRCLIB API Client
+
+---
+
+## 🔒 隱私權政策 (Privacy Policy)
+
+### Data Collection & Usage Disclosure
+YTM Desktop Lyrics Sync does NOT collect, store, share, or transmit any user personal data, browsing history, credentials, or cookies. 
+
+### Functionality & Local Processing
+To enable real-time lyric synchronization and desktop widget playback controls:
+- The Chrome extension reads non-personal playback metadata (song title, artist, album cover URL, current time, and pause state) strictly on `music.youtube.com`.
+- All playback data is transmitted exclusively via a local WebSocket connection (`ws://127.0.0.1:27890`) directly to your own local desktop application on the same machine.
+- No data is ever sent to or processed by any external cloud servers or third parties.
