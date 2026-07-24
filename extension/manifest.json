@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "YTM Desktop Lyrics Sync",
+  "version": "1.0.0",
+  "description": "YouTube Music 播放即時資訊同步擴充功能，將進度發送至桌面歌詞組件",
+  "permissions": [],
+  "host_permissions": [
+    "*://music.youtube.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://music.youtube.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "styles.css"
+      ],
+      "run_at": "document_end"
+    }
+  ],
+  "icons": {
+    "128": "icon.png"
+  },
+  "action": {
+    "default_title": "YTM Desktop Lyrics Sync Active",
+    "default_icon": "icon.png"
+  }
+}
