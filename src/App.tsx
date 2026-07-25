@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { getCurrentWindow } from '@tauri-apps/api/window';
 import { parseLrc, getActiveLyricIndex, LyricLine } from './utils/lrcParser';
 import { fetchLyrics } from './services/lrclib';
 import { ControlPanel } from './components/ControlPanel';
@@ -21,6 +20,7 @@ export const App: React.FC = () => {
   const [track, setTrack] = useState<TrackPayload | null>(null);
   const [lyrics, setLyrics] = useState<LyricLine[]>([]);
   const [isLoadingLyrics, setIsLoadingLyrics] = useState<boolean>(false);
+  const [offset, setOffset] = useState<number>(0);
   const [isClickThrough, setIsClickThrough] = useState<boolean>(false);
   const [showLyrics, setShowLyrics] = useState<boolean>(true);
 
@@ -28,7 +28,9 @@ export const App: React.FC = () => {
   const latestTrackRef = useRef<TrackPayload | null>(null);
   const isClickThroughRef = useRef<boolean>(false);
   const showLyricsRef = useRef<boolean>(true);
-  const expandedHeightRef = useRef<number>(450);
+  
+  // Real-time Memory for Expanded Window Height in Physical Pixels (Default 560px)
+  const savedExpandedHeightRef = useRef<number>(560);
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
@@ -39,15 +41,21 @@ export const App: React.FC = () => {
     showLyricsRef.current = showLyrics;
   }, [showLyrics]);
 
-  // Continuously record expanded window height when lyrics are visible
+  const lastMinHeightRef = useRef<number>(0);
+  const isInitialMountRef = useRef<boolean>(true);
+
+  // Continuously update savedExpandedHeightRef using Math.floor (無條件捨去) to neutralize upward subpixel creep
   useEffect(() => {
     const handleWindowResize = () => {
       if (showLyricsRef.current) {
         const container = document.querySelector('.widget-container') as HTMLElement;
         if (container) {
-          const rect = container.getBoundingClientRect();
-          if (rect.height > 220) {
-            expandedHeightRef.current = Math.ceil(rect.height);
+          const factor = window.devicePixelRatio || 1;
+          const currentPhysHeight = Math.floor(container.getBoundingClientRect().height * factor);
+          
+          // Truncate subpixels with Math.floor to ensure values never drift upward
+          if (currentPhysHeight >= Math.floor(170 * factor)) {
+            savedExpandedHeightRef.current = currentPhysHeight;
           }
         }
       }
@@ -57,12 +65,7 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('resize', handleWindowResize);
   }, []);
 
-
-
-  const lastMinHeightRef = useRef<number>(0);
-  const isInitialMountRef = useRef<boolean>(true);
-
-  // Synchronize exact live DOM header height directly with Win32 WM_SIZING hook
+  // Synchronize live DOM header height directly with Win32 WM_SIZING hook (Original Guard Unchanged)
   useEffect(() => {
     const headerEl = document.querySelector('.header-bar') as HTMLElement;
     if (!headerEl) return;
@@ -70,19 +73,17 @@ export const App: React.FC = () => {
     const syncMinHeight = () => {
       const factor = window.devicePixelRatio || 1;
       const headerHeight = headerEl.scrollHeight > 0 ? headerEl.scrollHeight : 84;
-      // Enforce minimum height for 3 lines of lyrics with original font size/spacing (116px)
       const lyricsExtra = showLyrics ? 116 : 0;
-      const minPhysHeight = Math.ceil((headerHeight + 2 + lyricsExtra) * factor);
+      const minPhysHeight = Math.floor((headerHeight + 2 + lyricsExtra) * factor);
 
       if (Math.abs(minPhysHeight - lastMinHeightRef.current) >= 1) {
         lastMinHeightRef.current = minPhysHeight;
         invoke('set_min_height_only', { height: minPhysHeight }).catch(() => {});
 
-        // Automatically align physical window size on initial startup directly to actual measured height limit
         if (isInitialMountRef.current) {
           isInitialMountRef.current = false;
           invoke('resize_physical_window', {
-            width: Math.ceil(295 * factor),
+            width: Math.floor(295 * factor),
             height: minPhysHeight,
           }).catch(() => {});
         }
@@ -101,6 +102,8 @@ export const App: React.FC = () => {
       observer.disconnect();
     };
   }, [showLyrics, track?.title]);
+
+  // Clean single-send command dispatch
   const sendPlayerCommand = async (cmd: 'playPause' | 'next' | 'previous') => {
     try {
       await invoke('send_player_command', { command: cmd });
@@ -113,7 +116,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // Toggle lyrics with Snug High-Density Height Alignment
+  // Toggle lyrics using Math.floor (無條件捨去) for guaranteed subpixel stability
   const handleToggleLyrics = async () => {
     const nextShowLyrics = !showLyricsRef.current;
 
@@ -121,37 +124,39 @@ export const App: React.FC = () => {
       const factor = window.devicePixelRatio || 1;
       const container = document.querySelector('.widget-container') as HTMLElement;
       const headerEl = document.querySelector('.header-bar') as HTMLElement;
+      const currentWidth = container ? container.getBoundingClientRect().width : 640;
 
       if (!nextShowLyrics) {
-        // Record exact current expanded height BEFORE collapsing
+        // Record physical height using Math.floor before collapsing
         if (container) {
-          const currentHeight = container.getBoundingClientRect().height;
-          if (currentHeight > 220) {
-            expandedHeightRef.current = Math.ceil(currentHeight);
+          const currentPhysHeight = Math.floor(container.getBoundingClientRect().height * factor);
+          if (currentPhysHeight >= Math.floor(170 * factor)) {
+            savedExpandedHeightRef.current = currentPhysHeight;
           }
         }
 
         setShowLyrics(false);
 
-        // Set window height to tight, snug initial collapsed size (~86px)
+        // Collapse to compact mode using Math.floor
         const headerHeight = headerEl ? (headerEl.scrollHeight > 0 ? headerEl.scrollHeight : 84) : 84;
-        const physHeight = Math.ceil((headerHeight + 2) * factor);
+        const physWidth = Math.floor(currentWidth * factor);
+        const physHeight = Math.floor((headerHeight + 2) * factor);
 
         await invoke('lock_window_height', {
-          width: 0,
+          width: physWidth,
           height: physHeight,
           isLocked: true,
         });
       } else {
         setShowLyrics(true);
 
-        // Restore exact pre-collapse physical height!
-        const targetExpanded = expandedHeightRef.current > 220 ? expandedHeightRef.current : 450;
-        const physHeight = Math.ceil(targetExpanded * factor);
+        // Directly restore savedExpandedHeightRef with Math.floor calculation
+        const physWidth = Math.floor(currentWidth * factor);
+        const targetPhysHeight = Math.floor(savedExpandedHeightRef.current);
 
         await invoke('lock_window_height', {
-          width: 0,
-          height: physHeight,
+          width: physWidth,
+          height: targetPhysHeight,
           isLocked: false,
         });
       }
@@ -260,19 +265,16 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  const DEFAULT_ANIMATION_OFFSET = 0.15;
-  const [userOffset, setUserOffset] = useState<number>(0);
-
   const handleOffsetChange = (delta: number) => {
-    setUserOffset((prev) => Math.round((prev + delta) * 10) / 10);
+    setOffset((prev) => Math.round((prev + delta) * 10) / 10);
   };
 
   const handleOffsetReset = () => {
-    setUserOffset(0);
+    setOffset(0);
   };
 
-  // Compute active lyric line index with hidden 0.15s default animation offset + user manual offset
-  const activeIndex = getActiveLyricIndex(lyrics, track?.currentTime || 0, userOffset + DEFAULT_ANIMATION_OFFSET);
+  // Compute active lyric line index
+  const activeIndex = getActiveLyricIndex(lyrics, track?.currentTime || 0, offset);
 
   return (
     <div
@@ -284,7 +286,7 @@ export const App: React.FC = () => {
         artist={track?.artist || ''}
         albumArt={track?.albumArt}
         isPaused={track?.isPaused ?? true}
-        offset={userOffset}
+        offset={offset}
         onOffsetChange={handleOffsetChange}
         onOffsetReset={handleOffsetReset}
         isClickThrough={isClickThrough}

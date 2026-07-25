@@ -1,6 +1,8 @@
 mod ws_server;
 
 use tauri::{Emitter, Manager};
+use tauri::menu::{MenuBuilder, MenuItemBuilder};
+use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 #[tauri::command]
@@ -134,6 +136,41 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             let app_handle = app.handle().clone();
+
+            // Setup System Tray Icon & Context Menu
+            let toggle_item = MenuItemBuilder::with_id("toggle", "顯示/隱藏歌詞").build(app)?;
+            let quit_item = MenuItemBuilder::with_id("quit", "結束程式").build(app)?;
+            let tray_menu = MenuBuilder::new(app)
+                .items(&[&toggle_item, &quit_item])
+                .build()?;
+
+            let icon = app.default_window_icon().cloned();
+            let mut tray_builder = TrayIconBuilder::new().menu(&tray_menu);
+            if let Some(ic) = icon {
+                tray_builder = tray_builder.icon(ic);
+            }
+
+            let _tray = tray_builder
+                .on_menu_event(|app_handle, event| {
+                    match event.id().as_ref() {
+                        "toggle" => {
+                            let _ = app_handle.emit("toggle-lyrics-visibility", ());
+                        }
+                        "quit" => {
+                            app_handle.exit(0);
+                        }
+                        _ => {}
+                    }
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click { button: tauri::tray::MouseButton::Left, .. } = event {
+                        let app_handle = tray.app_handle();
+                        if let Some(window) = app_handle.get_webview_window("main") {
+                            let _ = window.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
 
             // Disable Maximizable, set initial size 295x163, position top 200px / right 100px & attach Win32 Subclass
             if let Some(window) = app.get_webview_window("main") {
