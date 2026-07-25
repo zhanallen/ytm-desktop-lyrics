@@ -1,73 +1,43 @@
 # YTM Desktop Lyrics (YouTube Music 桌面即時歌詞同步工具)
 
-一款專為 YouTube Music 設計的跨平台桌面透明懸浮動態歌詞小組件，基於 **Tauri v2 + React + Rust** 開發，搭配 Chrome 擴充功能實現毫秒級即時同步與控制。
+一款專為 YouTube Music 設計的高質感桌面透明懸浮動態歌詞小組件。開啟 YouTube Music 網頁版播放音樂時，桌面小組件即會自動同步歌曲資訊、動態歌詞與專輯封面，並支援桌面端控制播放。
 
 ---
 
-## 🎨 核心特色
+## ✨ 核心特色
 
-- **磨砂玻璃透明懸浮視窗**：支援 Windows 桌面置頂、高質感 Glassmorphic 介面與透明背景。
-- **YouTube Music App 手機版風格歌詞**：當前演唱句 100% 精準鎖定在畫面正中央，字體放大高亮、彩色漸層與霓虹發光，搭配 60 FPS GPU 硬體加速平滑滾動。
-- **大尺寸專輯封面與播放控制**：提供雙排大封面樣式，專輯圖片與 `⏮️ 上一首` `⏯️ 播放/暫停` `⏭️ 下一首` 按鈕列 1:1 精確同寬對齊。
-- **視窗動態自適應縮放**：點擊眼睛圖示 (👁️) 可隨時隱藏歌詞，視窗會自動縮小為迷你播放器卡牌；視窗寬高放大時，專輯封面與歌詞字體會同步流暢放大。
-- **全域滑鼠穿透與解鎖 (Alt + L)**：支援全域快捷鍵解鎖/鎖定滑鼠點擊穿透。
-- **LRCLIB 動態歌詞自動搜尋**：自動去除非歌名雜訊並匹配正版同步動態歌詞，支援時間延遲微調 (⚙️)。
-
----
-
-## 🚀 自主啟動與安裝步驟
-
-這套工具由 **兩個部分** 組成：
-1. **Chrome 擴充功能 (`extension/`)**：負責擷取播放進度與傳送控制指令。
-2. **Tauri 桌面懸浮小組件 (`src-tauri/`)**：桌面懸浮視窗。
+- **磨砂玻璃透明懸浮視窗**：支援桌面置頂、高質感 Glassmorphic 介面與透明背景。
+- **手機版動態歌詞體驗**：演唱句精準鎖定畫面正中央，具備彩虹發光高亮與 60 FPS GPU 流暢滾動。
+- **專輯封面與雙向控制**：大尺寸專輯封面與 `⏮️ 上一首` `⏯️ 播放/暫停` `⏭️ 下一首` 即時操控。
+- **全域滑鼠穿透 (Alt + L)**：支援快捷鍵切換鎖定，鎖定後滑鼠可直接穿透視窗，不影響日常電腦操作，且視窗會自動半透明化。
+- **動態歌詞微調**：自動搜尋 LRCLIB 動態歌詞，並提供 `±0.1s` / `±0.5s` 時間延遲面板 (⚙️)。
 
 ---
 
-## 📌 第一步：安裝 Chrome 擴充功能 (僅需設定一次)
+## 💻 普通使用者快速安裝指南
 
-1. 開啟 Chrome 瀏覽器，網址列輸入 **`chrome://extensions`**。
-2. 開啟右上角的 **「開發人員模式 (Developer mode)」**。
-3. 點擊 **「載入未封裝項目 (Load unpacked)」**。
-4. 選擇本專案下的 **`extension`** 資料夾。
-5. 開啟 [YouTube Music 網頁](https://music.youtube.com) 播放歌曲，右下角顯示 **`Lyrics Sync: Connected`** 即連線成功。
+本工具由 **桌面懸浮軟體** 與 **Chrome 擴充功能** 兩部分組成：
 
----
+### 📌 步驟 1：下載並安裝桌面軟體
+1. 前往右側 [Releases 最新發布頁面](https://github.com/zhanallen/ytm-desktop-lyrics/releases) 下載最新的 `ytm-desktop-lyrics_x.x.x_x64-setup.exe`。
+2. 雙擊執行安裝檔完成安裝，啟動 **YTM Desktop Lyrics** 桌面應用程式。
 
-## 📌 第二步：啟動桌面懸浮小組件
-
-### 方式 A：開發模式啟動 (CMD / PowerShell)
-
-```powershell
-# 1. 切換至本專案資料夾
-cd d:\Code\AI\yt-muisc-tool
-
-# 2. 啟動桌面小組件
-npm run tauri dev
-```
+### 📌 步驟 2：安裝 Chrome 擴充功能 (僅需設定一次)
+*(註：待 Chrome Web Store 上架審核通過後，可直接於商店一鍵安裝；目前可手動載入)*
+1. 從 Releases 頁面下載 `ytm-desktop-lyrics-extension.zip` 並解壓至任意資料夾 (或直接下載本專案原始碼)。
+2. 開啟 Chrome 瀏覽器，網址列輸入 **`chrome://extensions`**。
+3. 開啟右上角的 **「開發人員模式 (Developer mode)」**。
+4. 點擊左上角 **「載入未封裝項目 (Load unpacked)」**，選擇擴充功能資料夾 `extension`。
+5. 開啟 [YouTube Music 網頁](https://music.youtube.com) 播放歌曲，右下角顯示 **`Lyrics Sync: Connected`** 即連線成功！
 
 ---
 
-### 方式 B：打包為一鍵執行的 EXE 檔 (最推薦)
-
-您可以將專案編譯為獨立的 `.exe` 執行檔，未來無需開啟文字視窗，直接雙擊即可使用：
-
-```powershell
-cd d:\Code\AI\yt-muisc-tool
-npm run tauri build
-```
-打包完成後，檔案位於：
-`src-tauri\target\release\ytm-desktop-lyrics.exe`
-
-您可以將該 `.exe` 建立捷徑至桌面或設定開機自動啟動！
-
----
-
-## 🎮 操作快捷鍵與功能說明
+## 🎮 桌面操作說明
 
 | 按鈕 / 快捷鍵 | 功能說明 |
 | :--- | :--- |
-| **Alt + L** | 全域快捷鍵：開啟 / 關閉滑鼠穿透（鎖定後滑鼠不擋視線） |
-| **✥ 移動圖示** | 按住拖拽移動懸浮視窗位置 |
+| **Alt + L** | 全域快捷鍵：開啟 / 關閉滑鼠穿透（鎖定後視窗半透明，且滑鼠不會擋住下方畫面） |
+| **✥ 移動區域** | 按住標頭空白處或封面拖拽移動懸浮視窗位置 |
 | **⏯️ 播放 / 暫停** | 切換 YouTube Music 播放與暫停 |
 | **⏮️ / ⏭️ 上下首** | 切換上一首 / 下一首歌曲 |
 | **👁️ 眼睛圖示** | 隱藏 / 顯示動態歌詞（隱藏時視窗自動收合為迷你播放器） |
@@ -75,12 +45,24 @@ npm run tauri build
 
 ---
 
-## 🛠️ 技術架構
+## 🛠️ 開發者自行編譯 (Developer Build Guide)
 
-- **Frontend**: React 18, TypeScript, Vite, Lucide Icons, CSS3 Glassmorphism
-- **Desktop Runtime**: Tauri v2, Rust (Tokio WebSocket, Global Shortcut plugin)
-- **Chrome Extension**: Manifest V3, WebSockets API, MediaSession API
-- **Lyrics API**: LRCLIB API Client
+如果您希望從原始碼自行編譯打包：
+
+```powershell
+# 1. 克隆專案
+git clone https://github.com/zhanallen/ytm-desktop-lyrics.git
+cd ytm-desktop-lyrics
+
+# 2. 安裝依賴
+npm install
+
+# 3. 開發模式啟動
+npm run tauri dev
+
+# 4. 打包可執行檔 (.exe)
+npm run tauri build
+```
 
 ---
 
