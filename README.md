@@ -23,12 +23,11 @@
 2. 雙擊執行安裝檔完成安裝，啟動 **YTM Desktop Lyrics** 桌面應用程式。
 
 ### 📌 步驟 2：安裝 Chrome 擴充功能 (僅需設定一次)
-*(註：待 Chrome Web Store 上架審核通過後，可直接於商店一鍵安裝；目前可手動載入)*
-1. 從 Releases 頁面下載 `ytm-desktop-lyrics-extension.zip` 並解壓至任意資料夾 (或直接下載本專案原始碼)。
-2. 開啟 Chrome 瀏覽器，網址列輸入 **`chrome://extensions`**。
-3. 開啟右上角的 **「開發人員模式 (Developer mode)」**。
-4. 點擊左上角 **「載入未封裝項目 (Load unpacked)」**，選擇擴充功能資料夾 `extension`。
-5. 開啟 [YouTube Music 網頁](https://music.youtube.com) 播放歌曲，右下角顯示 **`Lyrics Sync: Connected`** 即連線成功！
+1. 前往 Chrome 線上應用程式商店：👉 **[YTM Desktop Lyrics Sync (Chrome Web Store)](https://chromewebstore.google.com/detail/ytm-desktop-lyrics-sync/cgdbhodcjhibmnnfbegkklaphnmpkelo)**
+2. 點擊右上角 **「加到 Chrome (Add to Chrome)」** 完成安裝。
+3. 開啟 [YouTube Music 網頁](https://music.youtube.com) 播放歌曲，右下角顯示 **`Lyrics Sync: Connected`** 即連線成功！
+
+*(備註：如需離線安裝，也可從本專案源碼或 Releases 下載擴充功能資料夾解壓，至 `chrome://extensions` 開啟開發人員模式選擇「載入未封裝項目」)*
 
 ---
 
