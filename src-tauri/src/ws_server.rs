@@ -1,7 +1,7 @@
 use futures_util::{SinkExt, StreamExt};
 use std::net::SocketAddr;
 use std::sync::OnceLock;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tokio_tungstenite::accept_async;
@@ -38,6 +38,13 @@ pub async fn start_ws_server(app_handle: AppHandle) {
             if let Ok(ws_stream) = accept_async(stream).await {
                 let (mut write, mut read) = ws_stream.split();
 
+                // Send initial app version info
+                let hello_info = serde_json::json!({
+                    "type": "hello",
+                    "version": env!("CARGO_PKG_VERSION")
+                }).to_string();
+                let _ = write.send(tokio_tungstenite::tungstenite::Message::Text(hello_info.into())).await;
+
                 loop {
                     tokio::select! {
                         Some(msg_result) = read.next() => {
@@ -46,6 +53,13 @@ pub async fn start_ws_server(app_handle: AppHandle) {
                                     if msg.is_text() || msg.is_binary() {
                                         let text = msg.to_text().unwrap_or("");
                                         if !text.is_empty() {
+                                            if text.contains("\"focusWindow\"") || text.contains("'focusWindow'") {
+                                                if let Some(window) = handle.get_webview_window("main") {
+                                                    let _ = window.unminimize();
+                                                    let _ = window.show();
+                                                    let _ = window.set_focus();
+                                                }
+                                            }
                                             let _ = handle.emit("yt-music-update", text);
                                             let _ = tx_clone.send(text.to_string());
                                         }

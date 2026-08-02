@@ -105,3 +105,16 @@ export function getActiveLyricIndex(lyrics: LyricLine[], currentTime: number, of
 
   return lyrics.length - 1;
 }
+
+/**
+ * Convert plain text lyrics without timestamps into LyricLine[]
+ */
+export function parsePlainLyrics(plainText: string): LyricLine[] {
+  if (!plainText) return [];
+  const lines = plainText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  return lines.map((text, idx) => ({
+    time: idx * 5,
+    text: text
+  }));
+}
+

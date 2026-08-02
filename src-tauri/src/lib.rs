@@ -42,14 +42,14 @@ fn set_min_height_only(window: tauri::Window, height: u32) -> Result<(), String>
 
 #[tauri::command]
 fn lock_window_height(window: tauri::Window, width: u32, height: u32, is_locked: bool) -> Result<(), String> {
-    // Only update minimum height limit when collapsing (is_locked: true). Never lock expanded lyrics height (450px) as min height!
     if is_locked {
         DYNAMIC_MIN_PHYS_HEIGHT.store(height as i32, Ordering::SeqCst);
+    } else {
+        DYNAMIC_MIN_PHYS_HEIGHT.store(0, Ordering::SeqCst);
     }
     let _ = window.set_min_size(Some(tauri::Size::Logical(tauri::LogicalSize::new(295.0, 86.0))));
     let _ = window.set_max_size(Option::<tauri::Size>::None);
     
-    // Always preserve current physical width to prevent DPI scaling cumulative expansion
     let current_width = window.outer_size().map(|s| s.width).unwrap_or(width);
     let target_width = if current_width > 0 { current_width } else { width };
 
@@ -59,6 +59,34 @@ fn lock_window_height(window: tauri::Window, width: u32, height: u32, is_locked:
 #[tauri::command]
 fn toggle_lyrics_visibility(app_handle: tauri::AppHandle) -> Result<(), String> {
     let _ = app_handle.emit("toggle-lyrics-visibility", ());
+    Ok(())
+}
+
+#[tauri::command]
+fn open_settings_window(app_handle: tauri::AppHandle) -> Result<(), String> {
+    if let Some(existing) = app_handle.get_webview_window("settings") {
+        let _ = existing.show();
+        let _ = existing.unminimize();
+        let _ = existing.set_focus();
+        let _ = existing.emit("request-settings-state", ());
+        return Ok(());
+    }
+
+    let _settings_window = tauri::WebviewWindowBuilder::new(
+        &app_handle,
+        "settings",
+        tauri::WebviewUrl::App("index.html?window=settings".into()),
+    )
+    .title("偏好設定 - YT Music Lyrics")
+    .inner_size(340.0, 380.0)
+    .resizable(false)
+    .maximizable(false)
+    .decorations(true)
+    .transparent(false)
+    .always_on_top(true)
+    .center()
+    .build();
+
     Ok(())
 }
 
@@ -139,9 +167,10 @@ pub fn run() {
 
             // Setup System Tray Icon & Context Menu
             let toggle_item = MenuItemBuilder::with_id("toggle", "顯示/隱藏歌詞").build(app)?;
+            let settings_item = MenuItemBuilder::with_id("settings", "偏好設定").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "結束程式").build(app)?;
             let tray_menu = MenuBuilder::new(app)
-                .items(&[&toggle_item, &quit_item])
+                .items(&[&toggle_item, &settings_item, &quit_item])
                 .build()?;
 
             let icon = app.default_window_icon().cloned();
@@ -155,6 +184,9 @@ pub fn run() {
                     match event.id().as_ref() {
                         "toggle" => {
                             let _ = app_handle.emit("toggle-lyrics-visibility", ());
+                        }
+                        "settings" => {
+                            let _ = open_settings_window(app_handle.clone());
                         }
                         "quit" => {
                             app_handle.exit(0);
@@ -171,6 +203,17 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            // Prevent settings window destruction on close (hide window instead)
+            if let Some(settings_win) = app.get_webview_window("settings") {
+                let settings_win_clone = settings_win.clone();
+                settings_win.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = settings_win_clone.hide();
+                    }
+                });
+            }
 
             // Disable Maximizable, set initial size 295x163, position top 200px / right 100px & attach Win32 Subclass
             if let Some(window) = app.get_webview_window("main") {
@@ -225,7 +268,8 @@ pub fn run() {
             resize_physical_window,
             set_min_height_only,
             lock_window_height,
-            toggle_lyrics_visibility
+            toggle_lyrics_visibility,
+            open_settings_window
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

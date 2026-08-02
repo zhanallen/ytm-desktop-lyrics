@@ -9,8 +9,8 @@
   --text-muted: rgba(255, 255, 255, 0.58);
   --text-subtle: rgba(255, 255, 255, 0.32);
 
-  /* Expanded Upper Limit for High-Res Large Album Cover Scaling */
-  --player-left-col-width: clamp(64px, 22vw - 10px, 260px);
+  /* Ultra-Fast Responsive Linear Scaling starting from 295px min window width */
+  --player-left-col-width: clamp(64px, 35vw - 39.25px, 280px);
 }
 
 * {
@@ -21,36 +21,31 @@
   -webkit-user-select: none;
 }
 
-html, body, #root {
+html, body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: transparent !important;
   font-family: var(--font-family);
   color: #FFFFFF;
 }
 
-/* Glassmorphism Widget Container with Hardware Clip-Path */
+/* Glassmorphism Widget Container */
 .widget-container {
   width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
   background: var(--bg-glass);
-  backdrop-filter: blur(22px);
-  -webkit-backdrop-filter: blur(22px);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
   border: 1px solid var(--border-glass);
-  border-radius: 14px;
-  clip-path: inset(0 round 14px);
-  -webkit-clip-path: inset(0 round 14px);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
-  transition: background 0.3s ease, border-color 0.3s ease;
-  position: relative;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.65);
+  border-radius: 12px;
   overflow: hidden;
-  box-sizing: border-box;
+  position: relative;
+  transition: background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
 }
 
-/* Unrestricted Free Resizing Layout when lyrics are hidden */
 .widget-container.lyrics-hidden {
   height: 100% !important;
   min-height: 100% !important;
@@ -73,13 +68,13 @@ html, body, #root {
   opacity: 0.95;
 }
 
-/* Compact Control Header Bar - Restored Original Layout */
+/* Compact Control Header Bar */
 .header-bar {
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
+  gap: 8px;
+  padding: 8px 10px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(0, 0, 0, 0.18);
   flex-shrink: 0;
@@ -94,7 +89,6 @@ html, body, #root {
   flex-shrink: 0;
 }
 
-/* Right Content Column: Vertically Balanced & Centered Title Alignment */
 .mini-content-col {
   display: flex;
   flex-direction: column;
@@ -102,19 +96,14 @@ html, body, #root {
   flex: 1 1 0%;
   min-width: 0;
   height: var(--player-left-col-width);
-  padding: 2px 0;
-  box-sizing: border-box;
 }
 
 .track-details {
   display: flex;
   flex-direction: column;
-  justify-content: center;
   gap: 2px;
   min-width: 0;
   width: 100%;
-  margin-top: auto;
-  margin-bottom: auto;
 }
 
 .controls-single-row {
@@ -127,19 +116,19 @@ html, body, #root {
   flex-shrink: 0;
 }
 
-/* Dynamic Responsive Album Cover - Expanded Maximum Limit (up to 280px) */
+/* Dynamic Responsive Album Cover */
 .album-cover {
   width: var(--player-left-col-width) !important;
   height: var(--player-left-col-width) !important;
   min-width: 64px;
   min-height: 64px;
-  max-width: min(280px, 45vw) !important;
-  max-height: min(280px, 45vw) !important;
+  max-width: min(260px, 40vw) !important;
+  max-height: min(260px, 40vw) !important;
   aspect-ratio: 1 / 1 !important;
   object-fit: cover;
   flex: 0 0 auto !important;
-  border-radius: 10px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
 }
 
 .album-cover-placeholder {
@@ -147,11 +136,11 @@ html, body, #root {
   height: var(--player-left-col-width) !important;
   min-width: 64px;
   min-height: 64px;
-  max-width: min(280px, 45vw) !important;
-  max-height: min(280px, 45vw) !important;
+  max-width: min(260px, 40vw) !important;
+  max-height: min(260px, 40vw) !important;
   aspect-ratio: 1 / 1 !important;
   flex: 0 0 auto !important;
-  border-radius: 10px;
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.12);
   display: flex;
   align-items: center;
@@ -159,20 +148,18 @@ html, body, #root {
   color: var(--text-muted);
 }
 
-/* Enhanced High-Impact Dynamic Track Title & Artist Scaling */
 .track-title {
-  font-size: clamp(13px, 2.5vw + 4px, 28px);
-  font-weight: 800;
+  font-size: clamp(12px, 1.1vw + 8px, 18px);
+  font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   color: #FFFFFF;
   line-height: 1.25;
-  letter-spacing: -0.2px;
 }
 
 .track-artist {
-  font-size: clamp(11px, 1.4vw + 4px, 18px);
+  font-size: clamp(10px, 0.7vw + 6px, 13px);
   font-weight: 500;
   color: var(--text-muted);
   white-space: nowrap;
@@ -189,7 +176,6 @@ html, body, #root {
   flex-shrink: 0;
 }
 
-/* Playback Buttons Group */
 .playback-controls-group .button-group {
   display: flex;
   align-items: center;
@@ -307,154 +293,7 @@ html, body, #root {
   line-height: 1;
 }
 
-.hotkey-badge {
-  font-size: clamp(8px, min(0.7vw + 3px, 1vh + 3px), 11px);
-  background: rgba(0, 242, 254, 0.15);
-  color: #00F2FE;
-  border: 1px solid rgba(0, 242, 254, 0.3);
-  padding: 1px 4px;
-  border-radius: 3px;
-  font-weight: 600;
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-
-/* Independent Secondary Settings OS Window Styling - Native Fit */
-.settings-window-container {
-  width: 100vw;
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  padding: 0;
-  background: rgba(14, 18, 26, 0.98) !important;
-  box-sizing: border-box;
-  overflow: hidden;
-}
-
-.settings-window-container .settings-modal-card {
-  width: 100%;
-  height: 100%;
-  max-width: none;
-  border-radius: 0;
-  border: none;
-  box-shadow: none;
-  background: transparent !important;
-}
-
-.settings-modal-card {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.settings-modal-body {
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  height: 100%;
-  justify-content: center;
-}
-
-.settings-section {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.settings-section-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11.5px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.85);
-}
-
-.section-icon {
-  color: var(--accent-cyan);
-}
-
-.offset-display-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: rgba(0, 0, 0, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  padding: 8px 12px;
-  border-radius: 8px;
-}
-
-.offset-value {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--accent-cyan);
-  font-family: monospace;
-}
-
-.offset-reset-btn {
-  font-size: 11px;
-  padding: 3px 8px;
-}
-
-.offset-btn-group {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
-}
-
-.modal-action-btn {
-  width: 100%;
-  padding: 6px 0;
-  font-size: 11px;
-  font-weight: 600;
-  justify-content: center;
-}
-
-.settings-toggle-row {
-  display: flex;
-  gap: 8px;
-}
-
-.modal-toggle-btn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 7px 10px;
-  font-size: 11.5px;
-}
-
-.hotkeys-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 10px 12px;
-  border-radius: 8px;
-}
-
-.hotkey-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.85);
-}
-
-.hotkey-item kbd {
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
-  padding: 2px 6px;
-  font-family: monospace;
-  color: #FFFFFF;
-  font-weight: 600;
-}
-
-/* Synchronized GPU Hardware-Accelerated Lyrics Canvas */
+/* Lyrics Canvas Area */
 .lyrics-canvas {
   flex: 1 1 auto;
   position: relative;
@@ -480,7 +319,6 @@ html, body, #root {
   transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* Dynamic Responsive Lyric Line Font Size */
 .ytm-lyric-line {
   width: 100%;
   text-align: center;
@@ -514,30 +352,4 @@ html, body, #root {
   opacity: 1;
   transform: scale(1.15);
   filter: drop-shadow(0 0 12px rgba(0, 242, 254, 0.45));
-}
-
-/* Status States */
-.status-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  color: var(--text-muted);
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.pulse-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent-cyan);
-  animation: pulse 1.8s infinite;
-}
-
-@keyframes pulse {
-  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 242, 254, 0.7); }
-  70% { transform: scale(1.1); box-shadow: 0 0 0 8px rgba(0, 242, 254, 0); }
-  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 242, 254, 0.7); }
 }

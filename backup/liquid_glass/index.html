@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YTM Desktop Lyrics - Precision Layout Edition</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body class="mac-liquid-body">
+
+  <!-- Dynamic Environment Background -->
+  <div class="wallpaper-container">
+    <div class="fluid-blob blob-cyan"></div>
+    <div class="fluid-blob blob-magenta"></div>
+    <div class="fluid-blob blob-amber"></div>
+    <div class="fluid-blob blob-emerald"></div>
+    <div class="light-ray ray-1"></div>
+    <div class="light-ray ray-2"></div>
+    <div class="wallpaper-grid"></div>
+  </div>
+
+  <!-- Main Window Chassis: Thick Liquid Glass Chassis -->
+  <div class="widget-container thick-glass-block" style="width: 360px; height: 520px;">
+
+    <!-- Top Razor-Sharp Specular Rim Light -->
+    <div class="top-specular-rim"></div>
+
+    <!-- Prismatic Spectrum Refraction Ring -->
+    <div class="prismatic-edge-ring"></div>
+
+    <!-- Internal Caustic Refraction Layer -->
+    <div class="internal-caustic-layer"></div>
+
+    <!-- Header Bar: Floating Control Plane -->
+    <div class="header-bar" data-tauri-drag-region>
+      <!-- Left Column: Album Cover in Carved Socket -->
+      <div class="mini-cover-col" data-tauri-drag-region>
+        <div class="carved-cover-socket">
+          <div class="album-cover-placeholder thick-glass-cover">
+            <!-- Music Icon -->
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 18V5l12-2v13"></path>
+              <circle cx="6" cy="18" r="3"></circle>
+              <circle cx="18" cy="16" r="3"></circle>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Track Information -->
+      <div class="mini-content-col" data-tauri-drag-region>
+        <div class="track-details" data-tauri-drag-region>
+          <span class="track-title" title="Never Gonna Give You Up">Never Gonna Give You Up</span>
+          <span class="track-artist" title="Rick Astley">Rick Astley</span>
+        </div>
+
+        <!-- Controls Row: Carved Glass Sockets + Concentric Glass Keys -->
+        <div class="controls-single-row" data-tauri-drag-region>
+          <!-- Left: Playback Controls (Capsule Socket) -->
+          <div class="playback-controls-group">
+            <div class="button-group carved-glass-socket pill-socket">
+              <button class="control-btn glass-key-btn playback-btn" title="上一首">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="19 20 9 12 19 4 19 20"></polygon>
+                  <line x1="5" y1="19" x2="5" y2="5"></line>
+                </svg>
+              </button>
+              <button class="control-btn glass-key-btn playback-btn active liquid-active-key" title="暫停">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="6" y="4" width="4" height="16"></rect>
+                  <rect x="14" y="4" width="4" height="16"></rect>
+                </svg>
+              </button>
+              <button class="control-btn glass-key-btn playback-btn" title="下一首">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="5 4 15 12 5 20 5 4"></polygon>
+                  <line x1="19" y1="5" x2="19" y2="19"></line>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Right: Utility Controls & Exact Original Compact Offset Panel -->
+          <div class="utility-controls-group">
+            <!-- Compact Offset Adjust Panel (Hidden by Default, Original Layout) -->
+            <div class="button-group offset-panel compact-offset-socket" style="display: none;">
+              <button class="control-btn offset-btn compact-key" title="-0.5s">-0.5</button>
+              <button class="control-btn offset-btn compact-key" title="-0.1s">-0.1</button>
+              <button class="control-btn offset-btn offset-reset-btn compact-key reset-key" title="重置微調">+0.0s</button>
+              <button class="control-btn offset-btn compact-key" title="+0.1s">+0.1</button>
+              <button class="control-btn offset-btn compact-key" title="+0.5s">+0.5</button>
+            </div>
+
+            <!-- Settings Button -->
+            <button class="control-btn btn-settings glass-key-btn squircle-key" title="歌詞延遲微調 (+0.0s)">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+            </button>
+
+            <!-- Toggle Lyrics Button -->
+            <button class="control-btn btn-lyrics-toggle glass-key-btn squircle-key" title="隱藏動態歌詞 (保留播放器與封面)">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+            </button>
+
+            <!-- Click Through Toggle Button (Fixed Box Size to Prevent Double Jump) -->
+            <button class="control-btn btn-lock-toggle glass-key-btn squircle-key lock-fixed-btn" title="開啟滑鼠穿透 (快捷鍵 Alt+L)">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Lyrics Canvas Area -->
+    <div class="lyrics-canvas">
+      <div class="lyrics-wrapper" style="transform: translate3d(0px, 0px, 0px);">
+        <div class="ytm-lyric-line past">We've known each other for so long</div>
+        <div class="ytm-lyric-line past">Your heart's been aching, but you're too shy to say it</div>
+        <div class="ytm-lyric-line active thick-active-lyric">Never gonna give you up</div>
+        <div class="ytm-lyric-line future">Never gonna let you down</div>
+        <div class="ytm-lyric-line future">Never gonna run around and desert you</div>
+        <div class="ytm-lyric-line future">Never gonna make you cry</div>
+        <div class="ytm-lyric-line future">Never gonna say goodbye</div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="./script.js"></script>
+</body>
+</html>

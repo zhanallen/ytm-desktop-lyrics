@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { Lock, Unlock, Eye, EyeOff, Settings, Play, Pause, SkipBack, SkipForward, Music } from 'lucide-react';
-import { TrackInfo } from './TrackInfo';
+import { Unlock, Eye, EyeOff, Settings, Play, Pause, SkipBack, SkipForward, Music } from 'lucide-react';
 
 interface ControlPanelProps {
   title: string;
@@ -15,6 +14,7 @@ interface ControlPanelProps {
   onToggleClickThrough: () => void;
   showLyrics: boolean;
   onToggleLyrics: () => void;
+  onOpenSettingsWindow: () => void;
   onPlayPause: () => void;
   onNext: () => void;
   onPrevious: () => void;
@@ -32,16 +32,15 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   onToggleClickThrough,
   showLyrics,
   onToggleLyrics,
+  onOpenSettingsWindow,
   onPlayPause,
   onNext,
   onPrevious,
 }) => {
-  const [showOffsetPanel, setShowOffsetPanel] = useState<boolean>(false);
   const numStr = Number(offset.toFixed(2)).toString();
   const formattedOffset = (offset >= 0 ? `+${numStr}` : numStr) + 's';
 
   const handleStartDrag = (e: React.MouseEvent) => {
-    // Only trigger drag if clicked directly on background container/header, not on interactive buttons
     const target = e.target as HTMLElement;
     if (target.closest('button') || target.closest('.control-btn')) {
       return;
@@ -101,32 +100,12 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             </div>
           </div>
 
-          {/* Right: Utility Controls & Offset Adjustment */}
+          {/* Right: Utility Controls & Native Secondary Window Settings Trigger */}
           <div className="utility-controls-group">
-            {showOffsetPanel && (
-              <div className="button-group" style={{ padding: '2px 4px' }}>
-                <button className="control-btn" style={{ padding: '2px 4px' }} onClick={() => onOffsetChange(-0.5)} title="-0.5s">
-                  -0.5
-                </button>
-                <button className="control-btn" style={{ padding: '2px 4px' }} onClick={() => onOffsetChange(-0.1)} title="-0.1s">
-                  -0.1
-                </button>
-                <button className="control-btn" style={{ padding: '2px 5px', fontSize: '10px' }} onClick={onOffsetReset} title="重置微調">
-                  {formattedOffset}
-                </button>
-                <button className="control-btn" style={{ padding: '2px 4px' }} onClick={() => onOffsetChange(0.1)} title="+0.1s">
-                  +0.1
-                </button>
-                <button className="control-btn" style={{ padding: '2px 4px' }} onClick={() => onOffsetChange(0.5)} title="+0.5s">
-                  +0.5
-                </button>
-              </div>
-            )}
-
             <button
-              className={`control-btn ${showOffsetPanel ? 'active' : ''}`}
-              onClick={() => setShowOffsetPanel(!showOffsetPanel)}
-              title={`歌詞延遲微調 (${formattedOffset})`}
+              className="control-btn"
+              onClick={onOpenSettingsWindow}
+              title={`開啟獨立偏好設定視窗 (${formattedOffset})`}
             >
               <Settings size={12} />
             </button>

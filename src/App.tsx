@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
+import { listen, emit } from '@tauri-apps/api/event';
 import { parseLrc, getActiveLyricIndex, LyricLine } from './utils/lrcParser';
 import { fetchLyrics } from './services/lrclib';
 import { ControlPanel } from './components/ControlPanel';
 import { LyricsViewer } from './components/LyricsViewer';
+import { SettingsPage } from './components/SettingsPage';
 
 interface TrackPayload {
   title: string;
@@ -17,6 +18,20 @@ interface TrackPayload {
 }
 
 export const App: React.FC = () => {
+  // Check if current window route is the settings window
+  const isSettingsRoute =
+    window.location.search.includes('window=settings') ||
+    window.location.hash.includes('settings') ||
+    window.location.href.includes('window=settings');
+
+  if (isSettingsRoute) {
+    return <SettingsPage />;
+  }
+
+  return <MainWidgetApp />;
+};
+
+const MainWidgetApp: React.FC = () => {
   const [track, setTrack] = useState<TrackPayload | null>(null);
   const [lyrics, setLyrics] = useState<LyricLine[]>([]);
   const [isLoadingLyrics, setIsLoadingLyrics] = useState<boolean>(false);
@@ -28,6 +43,7 @@ export const App: React.FC = () => {
   const latestTrackRef = useRef<TrackPayload | null>(null);
   const isClickThroughRef = useRef<boolean>(false);
   const showLyricsRef = useRef<boolean>(true);
+  const offsetRef = useRef<number>(0);
   
   // Real-time Memory for Expanded Window Height in Physical Pixels (Default 560px)
   const savedExpandedHeightRef = useRef<number>(560);
@@ -41,10 +57,23 @@ export const App: React.FC = () => {
     showLyricsRef.current = showLyrics;
   }, [showLyrics]);
 
+  useEffect(() => {
+    offsetRef.current = offset;
+  }, [offset]);
+
   const lastMinHeightRef = useRef<number>(0);
   const isInitialMountRef = useRef<boolean>(true);
 
-  // Continuously update savedExpandedHeightRef using Math.floor (無條件捨去) to neutralize upward subpixel creep
+  // Broadcast current state to Settings window whenever it asks
+  const broadcastStateToSettings = () => {
+    emit('sync-settings-state', {
+      offset: offsetRef.current,
+      isClickThrough: isClickThroughRef.current,
+      showLyrics: showLyricsRef.current,
+    });
+  };
+
+  // Continuously update savedExpandedHeightRef using Math.floor
   useEffect(() => {
     const handleWindowResize = () => {
       if (showLyricsRef.current) {
@@ -53,7 +82,6 @@ export const App: React.FC = () => {
           const factor = window.devicePixelRatio || 1;
           const currentPhysHeight = Math.floor(container.getBoundingClientRect().height * factor);
           
-          // Truncate subpixels with Math.floor to ensure values never drift upward
           if (currentPhysHeight >= Math.floor(170 * factor)) {
             savedExpandedHeightRef.current = currentPhysHeight;
           }
@@ -147,6 +175,7 @@ export const App: React.FC = () => {
           height: physHeight,
           isLocked: true,
         });
+        broadcastStateToSettings();
       } else {
         setShowLyrics(true);
 
@@ -159,6 +188,7 @@ export const App: React.FC = () => {
           height: targetPhysHeight,
           isLocked: false,
         });
+        broadcastStateToSettings();
       }
     } catch (err) {
       console.warn('Physical window resize on toggle lyrics error:', err);
@@ -180,7 +210,6 @@ export const App: React.FC = () => {
 
       const res = await fetchLyrics(payload.title, payload.artist, payload.duration);
 
-      // Race-Condition & Stale Timestamp Guard:
       if (songKey === currentSongRef.current) {
         if (res && res.syncedLyrics) {
           const parsed = parseLrc(res.syncedLyrics);
@@ -204,8 +233,17 @@ export const App: React.FC = () => {
 
     try {
       await invoke('set_ignore_cursor_events', { ignore: nextState });
+      broadcastStateToSettings();
     } catch (err) {
       console.warn('Click-through invoke warning:', err);
+    }
+  };
+
+  const handleOpenSettingsWindow = async () => {
+    try {
+      await invoke('open_settings_window');
+    } catch (err) {
+      console.warn('Open settings window error:', err);
     }
   };
 
@@ -213,6 +251,11 @@ export const App: React.FC = () => {
     let unlistenUpdate: (() => void) | null = null;
     let unlistenShortcut: (() => void) | null = null;
     let unlistenToggleLyrics: (() => void) | null = null;
+    let unlistenReqState: (() => void) | null = null;
+    let unlistenOffsetDelta: (() => void) | null = null;
+    let unlistenResetOffset: (() => void) | null = null;
+    let unlistenClickThroughCmd: (() => void) | null = null;
+    let unlistenLyricsCmd: (() => void) | null = null;
 
     const setupTauriListeners = async () => {
       try {
@@ -228,6 +271,30 @@ export const App: React.FC = () => {
         });
 
         unlistenToggleLyrics = await listen('toggle-lyrics-visibility', () => {
+          handleToggleLyrics();
+        });
+
+        // Listen for requests & commands from Secondary Settings Window
+        unlistenReqState = await listen('request-settings-state', () => {
+          broadcastStateToSettings();
+        });
+
+        unlistenOffsetDelta = await listen<number>('change-offset-delta', (event) => {
+          setOffset((prev) => {
+            const next = Math.round((prev + event.payload) * 10) / 10;
+            return next;
+          });
+        });
+
+        unlistenResetOffset = await listen('reset-offset', () => {
+          setOffset(0);
+        });
+
+        unlistenClickThroughCmd = await listen('toggle-click-through-cmd', () => {
+          toggleClickThrough();
+        });
+
+        unlistenLyricsCmd = await listen('toggle-lyrics-cmd', () => {
           handleToggleLyrics();
         });
       } catch (e) {}
@@ -261,6 +328,11 @@ export const App: React.FC = () => {
       if (unlistenUpdate) unlistenUpdate();
       if (unlistenShortcut) unlistenShortcut();
       if (unlistenToggleLyrics) unlistenToggleLyrics();
+      if (unlistenReqState) unlistenReqState();
+      if (unlistenOffsetDelta) unlistenOffsetDelta();
+      if (unlistenResetOffset) unlistenResetOffset();
+      if (unlistenClickThroughCmd) unlistenClickThroughCmd();
+      if (unlistenLyricsCmd) unlistenLyricsCmd();
       if (wsRef.current) wsRef.current.close();
     };
   }, []);
@@ -293,6 +365,7 @@ export const App: React.FC = () => {
         onToggleClickThrough={() => toggleClickThrough()}
         showLyrics={showLyrics}
         onToggleLyrics={handleToggleLyrics}
+        onOpenSettingsWindow={handleOpenSettingsWindow}
         onPlayPause={() => sendPlayerCommand('playPause')}
         onNext={() => sendPlayerCommand('next')}
         onPrevious={() => sendPlayerCommand('previous')}

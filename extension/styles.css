@@ -1,28 +1,52 @@
 #ytm-lyrics-sync-badge {
-  position: fixed;
-  bottom: 80px;
-  right: 20px;
-  z-index: 999999;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  background: rgba(18, 18, 18, 0.85);
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 6px 12px;
-  border-radius: 20px;
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 4px 10px;
+  border-radius: 16px;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 12px;
+  font-weight: 500;
   color: #E0E0E0;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-  pointer-events: none;
-  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  margin-right: 10px;
+  margin-left: 4px;
+  white-space: nowrap;
+  user-select: none;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+#ytm-lyrics-sync-badge:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.28);
+  transform: translateY(-1px);
+}
+
+#ytm-lyrics-sync-badge:active {
+  transform: translateY(0px);
+  opacity: 0.85;
+}
+
+/* Fallback fixed position at top-right near avatar if detached from nav bar */
+body > #ytm-lyrics-sync-badge {
+  position: fixed;
+  top: 14px;
+  right: 75px;
+  z-index: 999999;
 }
 
 #ytm-lyrics-sync-badge .ytm-sync-dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: #FF5252;
+  box-shadow: 0 0 6px #FF5252;
   transition: background 0.3s ease, box-shadow 0.3s ease;
 }

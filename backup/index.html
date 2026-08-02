@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YTM Desktop Lyrics - UI Redesign Template</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body style="background: #0f172a; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh;">
+
+  <!-- Main Widget Container -->
+  <div class="widget-container" style="width: 360px; height: 500px;">
+
+    <!-- Header Control Bar -->
+    <div class="header-bar" data-tauri-drag-region>
+      <!-- Left Column: Album Cover / Placeholder -->
+      <div class="mini-cover-col" data-tauri-drag-region>
+        <div class="album-cover-placeholder">
+          <!-- Music Icon -->
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 18V5l12-2v13"></path>
+            <circle cx="6" cy="18" r="3"></circle>
+            <circle cx="18" cy="16" r="3"></circle>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Right Column: Track Info + Controls -->
+      <div class="mini-content-col" data-tauri-drag-region>
+        <!-- Track Title & Artist -->
+        <div class="track-details" data-tauri-drag-region>
+          <span class="track-title" title="Never Gonna Give You Up">Never Gonna Give You Up</span>
+          <span class="track-artist" title="Rick Astley">Rick Astley</span>
+        </div>
+
+        <!-- Single Row Controls: Playback Buttons + Utility Controls -->
+        <div class="controls-single-row" data-tauri-drag-region>
+          <!-- Left: Playback Controls -->
+          <div class="playback-controls-group">
+            <div class="button-group">
+              <button class="control-btn playback-btn" title="上一首">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="19 20 9 12 19 4 19 20"></polygon>
+                  <line x1="5" y1="19" x2="5" y2="5"></line>
+                </svg>
+              </button>
+              <button class="control-btn playback-btn active" title="暫停">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="6" y="4" width="4" height="16"></rect>
+                  <rect x="14" y="4" width="4" height="16"></rect>
+                </svg>
+              </button>
+              <button class="control-btn playback-btn" title="下一首">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="5 4 15 12 5 20 5 4"></polygon>
+                  <line x1="19" y1="5" x2="19" y2="19"></line>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Right: Utility Controls & Offset Adjustment -->
+          <div class="utility-controls-group">
+            <!-- Offset Adjust Panel (Hidden by Default) -->
+            <div class="button-group offset-panel" style="display: none; padding: 2px 4px;">
+              <button class="control-btn offset-btn" style="padding: 2px 4px;" title="-0.5s">-0.5</button>
+              <button class="control-btn offset-btn" style="padding: 2px 4px;" title="-0.1s">-0.1</button>
+              <button class="control-btn offset-btn offset-reset-btn" style="padding: 2px 5px; font-size: 10px;" title="重置微調">+0.0s</button>
+              <button class="control-btn offset-btn" style="padding: 2px 4px;" title="+0.1s">+0.1</button>
+              <button class="control-btn offset-btn" style="padding: 2px 4px;" title="+0.5s">+0.5</button>
+            </div>
+
+            <!-- Settings Button -->
+            <button class="control-btn btn-settings" title="歌詞延遲微調 (+0.0s)">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+            </button>
+
+            <!-- Toggle Lyrics Button -->
+            <button class="control-btn btn-lyrics-toggle" title="隱藏動態歌詞 (保留播放器與封面)">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+            </button>
+
+            <!-- Click Through Toggle Button -->
+            <button class="control-btn btn-lock-toggle" title="開啟滑鼠穿透 (快捷鍵 Alt+L)">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Lyrics Canvas Area -->
+    <div class="lyrics-canvas">
+      <div class="lyrics-wrapper" style="transform: translate3d(0px, 0px, 0px);">
+        <div class="ytm-lyric-line past">We've known each other for so long</div>
+        <div class="ytm-lyric-line past">Your heart's been aching, but you're too shy to say it</div>
+        <div class="ytm-lyric-line active">Never gonna give you up</div>
+        <div class="ytm-lyric-line future">Never gonna let you down</div>
+        <div class="ytm-lyric-line future">Never gonna run around and desert you</div>
+        <div class="ytm-lyric-line future">Never gonna make you cry</div>
+        <div class="ytm-lyric-line future">Never gonna say goodbye</div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="./script.js"></script>
+</body>
+</html>

@@ -6,25 +6,130 @@
   let reconnectTimer = null;
   let updateInterval = null;
   let statusBadge = null;
-  let badgeResetTimer = null;
   let domObserver = null;
 
   let lastTrackTitle = '';
   let mseBaseOffset = 0; // Calibration base offset between video.currentTime and DOM relative song time
 
-  function createStatusBadge() {
-    if (document.getElementById('ytm-lyrics-sync-badge')) {
-      statusBadge = document.getElementById('ytm-lyrics-sync-badge');
+  let desktopAppVersion = '';
+  let latestVersionTag = '';
+  let updateDownloadUrl = '';
+  let hasUpdateAvailable = false;
+
+  function compareSemver(v1, v2) {
+    const p1 = (v1 || '').replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
+    const p2 = (v2 || '').replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
+    for (let i = 0; i < Math.max(p1.length, p2.length); i++) {
+      const num1 = p1[i] || 0;
+      const num2 = p2[i] || 0;
+      if (num1 < num2) return -1;
+      if (num1 > num2) return 1;
+    }
+    return 0;
+  }
+
+  async function checkDesktopAppUpdate(currentVersion) {
+    if (!currentVersion) return;
+    try {
+      const res = await fetch('https://api.github.com/repos/zhanallen/ytm-desktop-lyrics/releases/latest');
+      if (!res.ok) return;
+      const data = await res.json();
+      const latestTag = (data.tag_name || '').trim();
+      const htmlUrl = data.html_url || 'https://github.com/zhanallen/ytm-desktop-lyrics/releases/latest';
+
+      if (latestTag && compareSemver(currentVersion, latestTag) < 0) {
+        hasUpdateAvailable = true;
+        latestVersionTag = latestTag;
+        updateDownloadUrl = htmlUrl;
+
+        updateBadgeStatus(true);
+
+        const promptKey = 'ytm_update_prompted_' + latestTag;
+        if (!sessionStorage.getItem(promptKey)) {
+          sessionStorage.setItem(promptKey, 'true');
+          setTimeout(() => {
+            if (confirm(`🎉 發現 YTM Desktop Lyrics 桌面軟體有新版本 (最新：${latestTag}，目前：v${currentVersion})！\n\n是否前往 GitHub 下載最新版本？`)) {
+              window.open(htmlUrl, '_blank');
+            }
+          }, 800);
+        }
+      }
+    } catch (e) {}
+  }
+
+  function handleBadgeClick() {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      if (hasUpdateAvailable && latestVersionTag) {
+        if (confirm(`🎉 發現桌面軟體新版本 ${latestVersionTag} (目前版本：v${desktopAppVersion})！\n\n點擊【確定】前往 GitHub 下載頁面更新，點擊【取消】開啟/聚焦目前的桌面視窗。`)) {
+          window.open(updateDownloadUrl || 'https://github.com/zhanallen/ytm-desktop-lyrics/releases/latest', '_blank');
+          return;
+        }
+      }
+      try {
+        socket.send(JSON.stringify({ command: 'focusWindow' }));
+      } catch (e) {}
       return;
     }
 
-    statusBadge = document.createElement('div');
-    statusBadge.id = 'ytm-lyrics-sync-badge';
-    statusBadge.innerHTML = `
-      <div class="ytm-sync-dot"></div>
-      <span class="ytm-sync-text">Lyrics Sync: Connecting...</span>
-    `;
-    (document.body || document.documentElement).appendChild(statusBadge);
+    // Ask user to open the desktop app
+    if (confirm('是否開啟 YTM Desktop Lyrics 桌面歌詞軟體？')) {
+      // Launch desktop app via hidden iframe (avoids page navigation / "Leave site" warning)
+      try {
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        iframe.src = 'ytm-lyrics://open';
+        (document.body || document.documentElement).appendChild(iframe);
+        setTimeout(() => {
+          try { iframe.remove(); } catch (e) {}
+        }, 2000);
+      } catch (e) {}
+
+      // Fallback: If still not connected after 2.5 seconds, prompt to download
+      setTimeout(() => {
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+          if (confirm('尚未偵測到桌面軟體連線。是否前往下載安裝 YTM Desktop Lyrics？')) {
+            window.open('https://github.com/zhanallen/ytm-desktop-lyrics/releases', '_blank');
+          }
+        }
+      }, 2500);
+    }
+  }
+
+  function createStatusBadge() {
+    let existing = document.getElementById('ytm-lyrics-sync-badge');
+    if (existing) {
+      statusBadge = existing;
+    } else {
+      statusBadge = document.createElement('div');
+      statusBadge.id = 'ytm-lyrics-sync-badge';
+      statusBadge.title = '點擊即可自動開啟 YTM Desktop Lyrics 桌面軟體';
+      statusBadge.innerHTML = `
+        <div class="ytm-sync-dot"></div>
+        <span class="ytm-sync-text">尚未連線（點擊開啟桌面軟體）</span>
+      `;
+      statusBadge.addEventListener('click', handleBadgeClick);
+    }
+
+    // Attach to YouTube Music top right header navigation bar (next to account avatar)
+    const navRight = document.querySelector('ytmusic-nav-bar #right-content') ||
+                     document.querySelector('ytmusic-nav-bar .right-content') ||
+                     document.querySelector('#right-content') ||
+                     document.querySelector('ytmusic-nav-bar');
+
+    if (navRight) {
+      if (statusBadge.parentElement !== navRight) {
+        const avatarOrSettings = navRight.querySelector('ytmusic-settings-button') ||
+                                 navRight.querySelector('#avatar-btn') ||
+                                 navRight.querySelector('.ytmusic-settings-button');
+        if (avatarOrSettings) {
+          navRight.insertBefore(statusBadge, avatarOrSettings);
+        } else {
+          navRight.appendChild(statusBadge);
+        }
+      }
+    } else if (!statusBadge.parentElement) {
+      (document.body || document.documentElement).appendChild(statusBadge);
+    }
   }
 
   function updateBadgeStatus(connected, text) {
@@ -33,26 +138,29 @@
     const dot = statusBadge.querySelector('.ytm-sync-dot');
     const label = statusBadge.querySelector('.ytm-sync-text');
     if (connected) {
-      if (dot) {
-        dot.style.background = '#4CAF50';
-        dot.style.boxShadow = '0 0 8px #4CAF50';
+      if (hasUpdateAvailable && latestVersionTag) {
+        if (dot) {
+          dot.style.background = '#FFA726';
+          dot.style.boxShadow = '0 0 8px #FFA726';
+        }
+        if (label) label.textContent = text || `已連線 (可更新 ${latestVersionTag})`;
+        statusBadge.title = `發現桌面軟體新版本 ${latestVersionTag} (目前：v${desktopAppVersion})！點擊前往 GitHub 下載`;
+      } else {
+        if (dot) {
+          dot.style.background = '#4CAF50';
+          dot.style.boxShadow = '0 0 8px #4CAF50';
+        }
+        if (label) label.textContent = text || '已連線到桌面軟體';
+        statusBadge.title = '已連線至桌面歌詞軟體 (點擊喚醒/聚焦視窗)';
       }
-      if (label) label.textContent = text || 'Lyrics Sync: Active';
     } else {
       if (dot) {
         dot.style.background = '#FF5252';
         dot.style.boxShadow = '0 0 8px #FF5252';
       }
-      if (label) label.textContent = text || 'Lyrics Sync: Disconnected';
+      if (label) label.textContent = text || '尚未連線（點擊開啟桌面軟體）';
+      statusBadge.title = '點擊即可自動開啟 YTM Desktop Lyrics 桌面軟體';
     }
-  }
-
-  function showReceivedFeedback(cmdName) {
-    updateBadgeStatus(true, `Lyrics Sync: [${cmdName}]`);
-    if (badgeResetTimer) clearTimeout(badgeResetTimer);
-    badgeResetTimer = setTimeout(() => {
-      updateBadgeStatus(true, 'Lyrics Sync: Active');
-    }, 1200);
   }
 
   // Convert time string "1:23 / 3:45" to relative seconds
@@ -103,7 +211,6 @@
     if (!data || !data.command) return;
 
     console.log('[YT Music Sync] Executing single-channel command:', data.command);
-    showReceivedFeedback(data.command);
 
     if (data.command === 'playPause') {
       const playBtn = document.querySelector('ytmusic-player-bar #play-pause-button') ||
@@ -165,7 +272,7 @@
 
       socket.onopen = () => {
         console.log('[YT Music Sync] Connected to Desktop Widget on', wsUrl);
-        updateBadgeStatus(true, 'Lyrics Sync: Connected');
+        updateBadgeStatus(true, '已連線到桌面軟體');
         if (reconnectTimer) {
           clearInterval(reconnectTimer);
           reconnectTimer = null;
@@ -175,21 +282,26 @@
       socket.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+          if (data && data.type === 'hello' && data.version) {
+            desktopAppVersion = data.version;
+            checkDesktopAppUpdate(data.version);
+            return;
+          }
           handleIncomingCommand(data);
         } catch (e) {}
       };
 
       socket.onclose = () => {
-        updateBadgeStatus(false, 'Lyrics Sync: Reconnecting...');
+        updateBadgeStatus(false, '尚未連線（點擊開啟桌面軟體）');
         currentWsIndex = (currentWsIndex + 1) % WS_URLS.length;
         scheduleReconnect();
       };
 
       socket.onerror = () => {
-        updateBadgeStatus(false, 'Lyrics Sync: Error');
+        updateBadgeStatus(false, '尚未連線（點擊開啟桌面軟體）');
       };
     } catch (e) {
-      updateBadgeStatus(false, 'Lyrics Sync: Error');
+      updateBadgeStatus(false, '尚未連線（點擊開啟桌面軟體）');
       scheduleReconnect();
     }
   }
@@ -307,25 +419,20 @@
     } catch (e) {}
   }
 
-  // Setup DOM MutationObserver on ytmusic-player-bar
+  // Setup DOM MutationObserver on ytmusic-player-bar & header
   function setupDOMObserver() {
     if (domObserver) return;
 
-    const targetNode = document.querySelector('ytmusic-player-bar');
-    if (!targetNode) {
-      setTimeout(setupDOMObserver, 1000);
-      return;
-    }
+    const targetNode = document.body;
 
     domObserver = new MutationObserver(() => {
+      createStatusBadge();
       sendUpdate();
     });
 
     domObserver.observe(targetNode, {
       childList: true,
-      subtree: true,
-      characterData: true,
-      attributes: true
+      subtree: true
     });
   }
 
