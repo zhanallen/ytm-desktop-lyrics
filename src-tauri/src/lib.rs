@@ -1,9 +1,35 @@
 mod ws_server;
 
 use tauri::{Emitter, Manager};
-use tauri::menu::{MenuBuilder, MenuItemBuilder};
+use tauri::menu::{MenuBuilder, MenuItem, MenuItemBuilder};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+use std::sync::atomic::{AtomicI32, Ordering};
+
+pub static DYNAMIC_MIN_PHYS_HEIGHT: AtomicI32 = AtomicI32::new(0);
+
+// Struct to store references to System Tray Menu Items for real-time i18n updating
+pub struct TrayMenuItems {
+    pub toggle: MenuItem<tauri::Wry>,
+    pub settings: MenuItem<tauri::Wry>,
+    pub quit: MenuItem<tauri::Wry>,
+}
+
+#[tauri::command]
+fn update_tray_language(app_handle: tauri::AppHandle, is_english: bool) -> Result<(), String> {
+    if let Some(tray_items) = app_handle.try_state::<TrayMenuItems>() {
+        if is_english {
+            let _ = tray_items.toggle.set_text("Toggle Lyrics");
+            let _ = tray_items.settings.set_text("Preferences");
+            let _ = tray_items.quit.set_text("Quit");
+        } else {
+            let _ = tray_items.toggle.set_text("顯示/隱藏歌詞");
+            let _ = tray_items.settings.set_text("偏好設定");
+            let _ = tray_items.quit.set_text("結束程式");
+        }
+    }
+    Ok(())
+}
 
 #[tauri::command]
 fn set_ignore_cursor_events(window: tauri::Window, ignore: bool) -> Result<(), String> {
@@ -21,10 +47,6 @@ fn send_player_command(command: String) -> Result<(), String> {
     ws_server::broadcast_message(payload);
     Ok(())
 }
-
-use std::sync::atomic::{AtomicI32, Ordering};
-
-pub static DYNAMIC_MIN_PHYS_HEIGHT: AtomicI32 = AtomicI32::new(0);
 
 #[tauri::command]
 fn resize_physical_window(window: tauri::Window, width: u32, height: u32) -> Result<(), String> {
@@ -78,7 +100,7 @@ fn open_settings_window(app_handle: tauri::AppHandle) -> Result<(), String> {
         tauri::WebviewUrl::App("index.html?window=settings".into()),
     )
     .title("偏好設定 - YT Music Lyrics")
-    .inner_size(340.0, 380.0)
+    .inner_size(360.0, 420.0)
     .resizable(false)
     .maximizable(false)
     .decorations(true)
@@ -169,6 +191,14 @@ pub fn run() {
             let toggle_item = MenuItemBuilder::with_id("toggle", "顯示/隱藏歌詞").build(app)?;
             let settings_item = MenuItemBuilder::with_id("settings", "偏好設定").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "結束程式").build(app)?;
+
+            // Manage TrayMenuItems state for real-time i18n updates
+            app.manage(TrayMenuItems {
+                toggle: toggle_item.clone(),
+                settings: settings_item.clone(),
+                quit: quit_item.clone(),
+            });
+
             let tray_menu = MenuBuilder::new(app)
                 .items(&[&toggle_item, &settings_item, &quit_item])
                 .build()?;
@@ -269,7 +299,8 @@ pub fn run() {
             set_min_height_only,
             lock_window_height,
             toggle_lyrics_visibility,
-            open_settings_window
+            open_settings_window,
+            update_tray_language
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

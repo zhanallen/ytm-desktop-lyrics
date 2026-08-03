@@ -1,11 +1,13 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { LyricLine } from '../utils/lrcParser';
+import { LanguageMode, getTranslation } from '../i18n';
 
 interface LyricsViewerProps {
   lyrics: LyricLine[];
   activeIndex: number;
   isLoading: boolean;
   hasTrack: boolean;
+  langMode: LanguageMode;
 }
 
 export const LyricsViewer: React.FC<LyricsViewerProps> = ({
@@ -13,7 +15,9 @@ export const LyricsViewer: React.FC<LyricsViewerProps> = ({
   activeIndex,
   isLoading,
   hasTrack,
+  langMode,
 }) => {
+  const t = getTranslation(langMode);
   const lineRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [translateY, setTranslateY] = useState<number>(0);
   const [manualOffset, setManualOffset] = useState<number>(0);
@@ -51,23 +55,22 @@ export const LyricsViewer: React.FC<LyricsViewerProps> = ({
     }, 3000);
   };
 
-  if (!hasTrack) {
+  if (isLoading) {
     return (
-      <div className="lyrics-canvas">
+      <div className="lyrics-canvas" data-tauri-drag-region>
         <div className="status-state">
           <div className="pulse-dot" />
-          <span>等待 YouTube Music 播放歌曲...</span>
+          <span>{t.searchingLyrics}</span>
         </div>
       </div>
     );
   }
 
-  if (isLoading) {
+  if (!hasTrack) {
     return (
-      <div className="lyrics-canvas">
+      <div className="lyrics-canvas" data-tauri-drag-region>
         <div className="status-state">
-          <div className="pulse-dot" />
-          <span>正在搜尋動態歌詞 (LRCLIB)...</span>
+          <span>{t.pleasePlayYtMusic}</span>
         </div>
       </div>
     );
@@ -75,9 +78,9 @@ export const LyricsViewer: React.FC<LyricsViewerProps> = ({
 
   if (!lyrics || lyrics.length === 0) {
     return (
-      <div className="lyrics-canvas">
+      <div className="lyrics-canvas" data-tauri-drag-region>
         <div className="status-state">
-          <span>🎵 純音樂或找不到動態歌詞</span>
+          <span>{t.noLyricsFound}</span>
         </div>
       </div>
     );
@@ -87,12 +90,13 @@ export const LyricsViewer: React.FC<LyricsViewerProps> = ({
   const currentTargetIdx = activeIndex >= 0 ? activeIndex : 0;
 
   return (
-    <div className="lyrics-canvas" onWheel={handleWheel}>
+    <div className="lyrics-canvas" onWheel={handleWheel} data-tauri-drag-region>
       <div
         className="lyrics-wrapper"
         style={{
           transform: `translate3d(0, ${finalTranslateY}px, 0)`,
         }}
+        data-tauri-drag-region
       >
         {lyrics.map((line, index) => {
           const isActive = index === activeIndex;
@@ -110,6 +114,7 @@ export const LyricsViewer: React.FC<LyricsViewerProps> = ({
                 }
               }}
               className={`ytm-lyric-line ${isActive ? 'active' : isPast ? 'past' : 'future'}`}
+              data-tauri-drag-region
             >
               {line.text}
             </div>

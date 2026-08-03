@@ -308,7 +308,7 @@ html, body, #root {
 }
 
 .hotkey-badge {
-  font-size: clamp(8px, min(0.7vw + 3px, 1vh + 3px), 11px);
+  font-size: 10px;
   background: rgba(0, 242, 254, 0.15);
   color: #00F2FE;
   border: 1px solid rgba(0, 242, 254, 0.3);
@@ -319,7 +319,7 @@ html, body, #root {
   white-space: nowrap;
 }
 
-/* Independent Secondary Settings OS Window Styling - Native Fit */
+/* Independent Secondary Settings OS Window Styling - Smooth Scrollable Layout */
 .settings-window-container {
   width: 100vw;
   height: 100vh;
@@ -328,39 +328,64 @@ html, body, #root {
   padding: 0;
   background: rgba(14, 18, 26, 0.98) !important;
   box-sizing: border-box;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .settings-window-container .settings-modal-card {
   width: 100%;
-  height: 100%;
+  min-height: 100%;
   max-width: none;
   border-radius: 0;
   border: none;
   box-shadow: none;
   background: transparent !important;
+  display: flex;
+  flex-direction: column;
 }
 
 .settings-modal-card {
   width: 100%;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 
 .settings-modal-body {
-  padding: 16px;
+  padding: 16px 14px 20px 14px;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  height: 100%;
-  justify-content: center;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Custom Glassmorphism Scrollbar for Settings Window */
+.settings-window-container::-webkit-scrollbar,
+.settings-modal-body::-webkit-scrollbar {
+  width: 5px;
+}
+
+.settings-window-container::-webkit-scrollbar-track,
+.settings-modal-body::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.settings-window-container::-webkit-scrollbar-thumb,
+.settings-modal-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 4px;
+}
+
+.settings-window-container::-webkit-scrollbar-thumb:hover,
+.settings-modal-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 242, 254, 0.5);
 }
 
 .settings-section {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  width: 100%;
 }
 
 .settings-section-label {
@@ -414,16 +439,27 @@ html, body, #root {
 
 .settings-toggle-row {
   display: flex;
-  gap: 8px;
+  gap: 6px;
+  width: 100%;
 }
 
 .modal-toggle-btn {
-  flex: 1;
+  flex: 1 1 0%;
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 7px 10px;
-  font-size: 11.5px;
+  gap: 4px;
+  padding: 7px 8px;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.modal-toggle-btn span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .hotkeys-grid {

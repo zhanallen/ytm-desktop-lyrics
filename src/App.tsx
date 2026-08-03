@@ -6,6 +6,7 @@ import { fetchLyrics } from './services/lrclib';
 import { ControlPanel } from './components/ControlPanel';
 import { LyricsViewer } from './components/LyricsViewer';
 import { SettingsPage } from './components/SettingsPage';
+import { LanguageMode, detectLanguage } from './i18n';
 
 interface TrackPayload {
   title: string;
@@ -35,15 +36,27 @@ const MainWidgetApp: React.FC = () => {
   const [track, setTrack] = useState<TrackPayload | null>(null);
   const [lyrics, setLyrics] = useState<LyricLine[]>([]);
   const [isLoadingLyrics, setIsLoadingLyrics] = useState<boolean>(false);
-  const [offset, setOffset] = useState<number>(0);
+  const [offset, setOffset] = useState<number>(() => {
+    const saved = localStorage.getItem('ytm_offset');
+    if (saved !== null) {
+      const parsed = parseFloat(saved);
+      if (!isNaN(parsed)) return parsed;
+    }
+    return 0;
+  });
   const [isClickThrough, setIsClickThrough] = useState<boolean>(false);
   const [showLyrics, setShowLyrics] = useState<boolean>(true);
+  const [languageMode, setLanguageMode] = useState<LanguageMode>(() => {
+    const saved = localStorage.getItem('ytm_lang');
+    return saved === 'zh-TW' || saved === 'en' || saved === 'system' ? (saved as LanguageMode) : 'system';
+  });
 
   const currentSongRef = useRef<string>('');
   const latestTrackRef = useRef<TrackPayload | null>(null);
   const isClickThroughRef = useRef<boolean>(false);
   const showLyricsRef = useRef<boolean>(true);
   const offsetRef = useRef<number>(0);
+  const languageModeRef = useRef<LanguageMode>('system');
   
   // Real-time Memory for Expanded Window Height in Physical Pixels (Default 560px)
   const savedExpandedHeightRef = useRef<number>(560);
@@ -59,17 +72,31 @@ const MainWidgetApp: React.FC = () => {
 
   useEffect(() => {
     offsetRef.current = offset;
+    localStorage.setItem('ytm_offset', offset.toString());
+    broadcastStateToSettings();
   }, [offset]);
+
+  useEffect(() => {
+    languageModeRef.current = languageMode;
+    const activeLang = detectLanguage(languageMode);
+    invoke('update_tray_language', { isEnglish: activeLang === 'en' }).catch(() => {});
+  }, [languageMode]);
 
   const lastMinHeightRef = useRef<number>(0);
   const isInitialMountRef = useRef<boolean>(true);
 
   // Broadcast current state to Settings window whenever it asks
   const broadcastStateToSettings = () => {
+    const storedLang = localStorage.getItem('ytm_lang');
+    const activeMode = storedLang === 'zh-TW' || storedLang === 'en' || storedLang === 'system'
+      ? (storedLang as LanguageMode)
+      : languageModeRef.current || 'system';
+
     emit('sync-settings-state', {
       offset: offsetRef.current,
       isClickThrough: isClickThroughRef.current,
       showLyrics: showLyricsRef.current,
+      languageMode: activeMode,
     });
   };
 
@@ -248,55 +275,77 @@ const MainWidgetApp: React.FC = () => {
   };
 
   useEffect(() => {
-    let unlistenUpdate: (() => void) | null = null;
-    let unlistenShortcut: (() => void) | null = null;
-    let unlistenToggleLyrics: (() => void) | null = null;
-    let unlistenReqState: (() => void) | null = null;
-    let unlistenOffsetDelta: (() => void) | null = null;
-    let unlistenResetOffset: (() => void) | null = null;
-    let unlistenClickThroughCmd: (() => void) | null = null;
-    let unlistenLyricsCmd: (() => void) | null = null;
+    let isMounted = true;
+    const unlistens: (() => void)[] = [];
 
     const setupTauriListeners = async () => {
       try {
-        unlistenUpdate = await listen<string>('yt-music-update', (event) => {
+        const u1 = await listen<string>('yt-music-update', (event) => {
+          if (!isMounted) return;
           try {
             const data: TrackPayload = typeof event.payload === 'string' ? JSON.parse(event.payload) : event.payload;
             handleUpdatePayload(data);
           } catch (e) {}
         });
+        if (isMounted) unlistens.push(u1); else u1();
 
-        unlistenShortcut = await listen('toggle-click-through', () => {
+        const u2 = await listen('toggle-click-through', () => {
+          if (!isMounted) return;
           toggleClickThrough();
         });
+        if (isMounted) unlistens.push(u2); else u2();
 
-        unlistenToggleLyrics = await listen('toggle-lyrics-visibility', () => {
+        const u3 = await listen('toggle-lyrics-visibility', () => {
+          if (!isMounted) return;
           handleToggleLyrics();
         });
+        if (isMounted) unlistens.push(u3); else u3();
 
-        // Listen for requests & commands from Secondary Settings Window
-        unlistenReqState = await listen('request-settings-state', () => {
+        const u4 = await listen('request-settings-state', () => {
+          if (!isMounted) return;
           broadcastStateToSettings();
         });
+        if (isMounted) unlistens.push(u4); else u4();
 
-        unlistenOffsetDelta = await listen<number>('change-offset-delta', (event) => {
+        const u5 = await listen<number>('change-offset-delta', (event) => {
+          if (!isMounted) return;
           setOffset((prev) => {
             const next = Math.round((prev + event.payload) * 10) / 10;
+            localStorage.setItem('ytm_offset', next.toString());
             return next;
           });
         });
+        if (isMounted) unlistens.push(u5); else u5();
 
-        unlistenResetOffset = await listen('reset-offset', () => {
+        const u6 = await listen('reset-offset', () => {
+          if (!isMounted) return;
           setOffset(0);
+          localStorage.setItem('ytm_offset', '0');
         });
+        if (isMounted) unlistens.push(u6); else u6();
 
-        unlistenClickThroughCmd = await listen('toggle-click-through-cmd', () => {
+        const u7 = await listen('toggle-click-through-cmd', () => {
+          if (!isMounted) return;
           toggleClickThrough();
         });
+        if (isMounted) unlistens.push(u7); else u7();
 
-        unlistenLyricsCmd = await listen('toggle-lyrics-cmd', () => {
+        const u8 = await listen('toggle-lyrics-cmd', () => {
+          if (!isMounted) return;
           handleToggleLyrics();
         });
+        if (isMounted) unlistens.push(u8); else u8();
+
+        const u9 = await listen<LanguageMode>('change-language-cmd', (event) => {
+          if (!isMounted) return;
+          if (event.payload) {
+            setLanguageMode(event.payload);
+            localStorage.setItem('ytm_lang', event.payload);
+            const activeLang = detectLanguage(event.payload);
+            invoke('update_tray_language', { isEnglish: activeLang === 'en' }).catch(() => {});
+          }
+        });
+        if (isMounted) unlistens.push(u9); else u9();
       } catch (e) {}
     };
 
@@ -306,6 +355,7 @@ const MainWidgetApp: React.FC = () => {
         wsRef.current = ws;
 
         ws.onmessage = (msg) => {
+          if (!isMounted) return;
           try {
             const data = JSON.parse(msg.data);
             if (data.title) {
@@ -314,10 +364,10 @@ const MainWidgetApp: React.FC = () => {
           } catch (err) {}
         };
         ws.onclose = () => {
-          setTimeout(connectDirectWs, 2000);
+          if (isMounted) setTimeout(connectDirectWs, 2000);
         };
       } catch (err) {
-        setTimeout(connectDirectWs, 2000);
+        if (isMounted) setTimeout(connectDirectWs, 2000);
       }
     };
 
@@ -325,24 +375,23 @@ const MainWidgetApp: React.FC = () => {
     connectDirectWs();
 
     return () => {
-      if (unlistenUpdate) unlistenUpdate();
-      if (unlistenShortcut) unlistenShortcut();
-      if (unlistenToggleLyrics) unlistenToggleLyrics();
-      if (unlistenReqState) unlistenReqState();
-      if (unlistenOffsetDelta) unlistenOffsetDelta();
-      if (unlistenResetOffset) unlistenResetOffset();
-      if (unlistenClickThroughCmd) unlistenClickThroughCmd();
-      if (unlistenLyricsCmd) unlistenLyricsCmd();
+      isMounted = false;
+      unlistens.forEach((unlisten) => unlisten());
       if (wsRef.current) wsRef.current.close();
     };
   }, []);
 
   const handleOffsetChange = (delta: number) => {
-    setOffset((prev) => Math.round((prev + delta) * 10) / 10);
+    setOffset((prev) => {
+      const next = Math.round((prev + delta) * 10) / 10;
+      localStorage.setItem('ytm_offset', next.toString());
+      return next;
+    });
   };
 
   const handleOffsetReset = () => {
     setOffset(0);
+    localStorage.setItem('ytm_offset', '0');
   };
 
   // Compute active lyric line index
@@ -359,6 +408,7 @@ const MainWidgetApp: React.FC = () => {
         albumArt={track?.albumArt}
         isPaused={track?.isPaused ?? true}
         offset={offset}
+        langMode={languageMode}
         onOffsetChange={handleOffsetChange}
         onOffsetReset={handleOffsetReset}
         isClickThrough={isClickThrough}
@@ -377,6 +427,7 @@ const MainWidgetApp: React.FC = () => {
           activeIndex={activeIndex}
           isLoading={isLoadingLyrics}
           hasTrack={!!track && !!track.title}
+          langMode={languageMode}
         />
       )}
     </div>

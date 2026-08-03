@@ -16,6 +16,23 @@
   let updateDownloadUrl = '';
   let hasUpdateAvailable = false;
 
+  // Internationalization (i18n) Engine for US & Global Users
+  const userLang = (navigator.language || navigator.userLanguage || 'zh-TW').toLowerCase();
+  const isEn = userLang.startsWith('en');
+
+  const t = {
+    notConnected: isEn ? 'Not Connected (Click to Open)' : '尚未連線（點擊開啟桌面軟體）',
+    connected: isEn ? 'Connected to Desktop App' : '已連線到桌面軟體',
+    updateAvailable: (tag) => isEn ? `Connected (Update ${tag})` : `已連線 (可更新 ${tag})`,
+    titleNotConnected: isEn ? 'Click to open YTM Desktop Lyrics' : '點擊即可自動開啟 YTM Desktop Lyrics 桌面軟體',
+    titleConnected: isEn ? 'Connected to YTM Desktop Lyrics (Click to focus window)' : '已連線至桌面歌詞軟體 (點擊喚醒/聚焦視窗)',
+    titleUpdate: (tag, cur) => isEn ? `New version ${tag} available (Current: v${cur})! Click to update` : `發現桌面軟體新版本 ${tag} (目前：v${cur})！點擊前往 GitHub 下載`,
+    confirmOpen: isEn ? 'Do you want to open YTM Desktop Lyrics?' : '要開啟桌面歌詞軟體嗎？',
+    confirmDownload: isEn ? 'Desktop app not connected. Would you like to visit the GitHub download page?' : '未連線到桌面軟體，要前往 GitHub 下載頁面嗎？',
+    confirmUpdateAuto: (tag) => isEn ? `YTM Desktop Lyrics new version available (${tag})\nWould you like to download the update?` : `YTM Desktop Lyrics 發現新版本 (${tag})\n是否前往下載更新？`,
+    confirmUpdateManual: (tag) => isEn ? `Desktop app update available (${tag})\nWould you like to download the update from GitHub?` : `桌面軟體有新版本 (${tag})\n是否前往 GitHub 下載更新？`
+  };
+
   function compareSemver(v1, v2) {
     const p1 = (v1 || '').replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
     const p2 = (v2 || '').replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
@@ -48,7 +65,7 @@
         if (!sessionStorage.getItem(promptKey)) {
           sessionStorage.setItem(promptKey, 'true');
           setTimeout(() => {
-            if (confirm(`🎉 發現 YTM Desktop Lyrics 桌面軟體有新版本 (最新：${latestTag}，目前：v${currentVersion})！\n\n是否前往 GitHub 下載最新版本？`)) {
+            if (confirm(t.confirmUpdateAuto(latestTag))) {
               window.open(htmlUrl, '_blank');
             }
           }, 800);
@@ -60,7 +77,7 @@
   function handleBadgeClick() {
     if (socket && socket.readyState === WebSocket.OPEN) {
       if (hasUpdateAvailable && latestVersionTag) {
-        if (confirm(`🎉 發現桌面軟體新版本 ${latestVersionTag} (目前版本：v${desktopAppVersion})！\n\n點擊【確定】前往 GitHub 下載頁面更新，點擊【取消】開啟/聚焦目前的桌面視窗。`)) {
+        if (confirm(t.confirmUpdateManual(latestVersionTag))) {
           window.open(updateDownloadUrl || 'https://github.com/zhanallen/ytm-desktop-lyrics/releases/latest', '_blank');
           return;
         }
@@ -72,7 +89,7 @@
     }
 
     // Ask user to open the desktop app
-    if (confirm('是否開啟 YTM Desktop Lyrics 桌面歌詞軟體？')) {
+    if (confirm(t.confirmOpen)) {
       // Launch desktop app via hidden iframe (avoids page navigation / "Leave site" warning)
       try {
         const iframe = document.createElement('iframe');
@@ -84,14 +101,26 @@
         }, 2000);
       } catch (e) {}
 
-      // Fallback: If still not connected after 2.5 seconds, prompt to download
+      // Immediately attempt WebSocket connection and start fast polling while app launches
+      connectWebSocket();
+      const fastConnectTimer = setInterval(() => {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          clearInterval(fastConnectTimer);
+        } else {
+          connectWebSocket();
+        }
+      }, 300);
+
+      setTimeout(() => clearInterval(fastConnectTimer), 4000);
+
+      // Fallback: If still not connected after 4 seconds, prompt to download
       setTimeout(() => {
         if (!socket || socket.readyState !== WebSocket.OPEN) {
-          if (confirm('尚未偵測到桌面軟體連線。是否前往下載安裝 YTM Desktop Lyrics？')) {
+          if (confirm(t.confirmDownload)) {
             window.open('https://github.com/zhanallen/ytm-desktop-lyrics/releases', '_blank');
           }
         }
-      }, 2500);
+      }, 4000);
     }
   }
 
@@ -102,10 +131,10 @@
     } else {
       statusBadge = document.createElement('div');
       statusBadge.id = 'ytm-lyrics-sync-badge';
-      statusBadge.title = '點擊即可自動開啟 YTM Desktop Lyrics 桌面軟體';
+      statusBadge.title = t.titleNotConnected;
       statusBadge.innerHTML = `
         <div class="ytm-sync-dot"></div>
-        <span class="ytm-sync-text">尚未連線（點擊開啟桌面軟體）</span>
+        <span class="ytm-sync-text">${t.notConnected}</span>
       `;
       statusBadge.addEventListener('click', handleBadgeClick);
     }
@@ -143,23 +172,23 @@
           dot.style.background = '#FFA726';
           dot.style.boxShadow = '0 0 8px #FFA726';
         }
-        if (label) label.textContent = text || `已連線 (可更新 ${latestVersionTag})`;
-        statusBadge.title = `發現桌面軟體新版本 ${latestVersionTag} (目前：v${desktopAppVersion})！點擊前往 GitHub 下載`;
+        if (label) label.textContent = t.updateAvailable(latestVersionTag);
+        statusBadge.title = t.titleUpdate(latestVersionTag, desktopAppVersion);
       } else {
         if (dot) {
           dot.style.background = '#4CAF50';
           dot.style.boxShadow = '0 0 8px #4CAF50';
         }
-        if (label) label.textContent = text || '已連線到桌面軟體';
-        statusBadge.title = '已連線至桌面歌詞軟體 (點擊喚醒/聚焦視窗)';
+        if (label) label.textContent = text || t.connected;
+        statusBadge.title = t.titleConnected;
       }
     } else {
       if (dot) {
         dot.style.background = '#FF5252';
         dot.style.boxShadow = '0 0 8px #FF5252';
       }
-      if (label) label.textContent = text || '尚未連線（點擊開啟桌面軟體）';
-      statusBadge.title = '點擊即可自動開啟 YTM Desktop Lyrics 桌面軟體';
+      if (label) label.textContent = text || t.notConnected;
+      statusBadge.title = t.titleNotConnected;
     }
   }
 
@@ -265,24 +294,41 @@
       return;
     }
 
+    desktopAppVersion = '';
+    latestVersionTag = '';
+    updateDownloadUrl = '';
+    hasUpdateAvailable = false;
+
     const wsUrl = WS_URLS[currentWsIndex];
 
     try {
       socket = new WebSocket(wsUrl);
 
+      let helloTimeoutTimer = null;
+
       socket.onopen = () => {
         console.log('[YT Music Sync] Connected to Desktop Widget on', wsUrl);
-        updateBadgeStatus(true, '已連線到桌面軟體');
+        updateBadgeStatus(true);
         if (reconnectTimer) {
           clearInterval(reconnectTimer);
           reconnectTimer = null;
         }
+
+        // Fallback for legacy v1.0.1 desktop software which doesn't send "hello" handshake
+        if (helloTimeoutTimer) clearTimeout(helloTimeoutTimer);
+        helloTimeoutTimer = setTimeout(() => {
+          if (!desktopAppVersion) {
+            desktopAppVersion = '1.0.1';
+            checkDesktopAppUpdate('1.0.1');
+          }
+        }, 3000);
       };
 
       socket.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
           if (data && data.type === 'hello' && data.version) {
+            if (helloTimeoutTimer) clearTimeout(helloTimeoutTimer);
             desktopAppVersion = data.version;
             checkDesktopAppUpdate(data.version);
             return;
@@ -292,16 +338,16 @@
       };
 
       socket.onclose = () => {
-        updateBadgeStatus(false, '尚未連線（點擊開啟桌面軟體）');
+        updateBadgeStatus(false);
         currentWsIndex = (currentWsIndex + 1) % WS_URLS.length;
         scheduleReconnect();
       };
 
       socket.onerror = () => {
-        updateBadgeStatus(false, '尚未連線（點擊開啟桌面軟體）');
+        updateBadgeStatus(false);
       };
     } catch (e) {
-      updateBadgeStatus(false, '尚未連線（點擊開啟桌面軟體）');
+      updateBadgeStatus(false);
       scheduleReconnect();
     }
   }

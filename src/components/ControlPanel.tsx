@@ -1,6 +1,7 @@
 import React from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Unlock, Eye, EyeOff, Settings, Play, Pause, SkipBack, SkipForward, Music } from 'lucide-react';
+import { LanguageMode, getTranslation } from '../i18n';
 
 interface ControlPanelProps {
   title: string;
@@ -8,6 +9,7 @@ interface ControlPanelProps {
   albumArt?: string;
   isPaused: boolean;
   offset: number;
+  langMode: LanguageMode;
   onOffsetChange: (delta: number) => void;
   onOffsetReset: () => void;
   isClickThrough: boolean;
@@ -26,6 +28,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   albumArt,
   isPaused,
   offset,
+  langMode,
   onOffsetChange,
   onOffsetReset,
   isClickThrough,
@@ -37,6 +40,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   onNext,
   onPrevious,
 }) => {
+  const t = getTranslation(langMode);
   const numStr = Number(offset.toFixed(2)).toString();
   const formattedOffset = (offset >= 0 ? `+${numStr}` : numStr) + 's';
 
@@ -76,10 +80,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         {/* Track Title & Artist */}
         <div className="track-details" data-tauri-drag-region>
           <span className="track-title" title={title}>
-            {title || 'YouTube Music'}
+            {title || t.ytMusic}
           </span>
           <span className="track-artist" title={artist}>
-            {artist || '未在播放'}
+            {artist || t.notPlaying}
           </span>
         </div>
 
@@ -88,13 +92,13 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           {/* Left: Playback Controls */}
           <div className="playback-controls-group">
             <div className="button-group">
-              <button className="control-btn playback-btn" onClick={onPrevious} title="上一首">
+              <button className="control-btn playback-btn" onClick={onPrevious} title={t.prevSong}>
                 <SkipBack size={13} />
               </button>
-              <button className="control-btn playback-btn active" onClick={onPlayPause} title={isPaused ? '播放' : '暫停'}>
+              <button className="control-btn playback-btn active" onClick={onPlayPause} title={isPaused ? t.play : t.pause}>
                 {isPaused ? <Play size={13} fill="currentColor" /> : <Pause size={13} fill="currentColor" />}
               </button>
-              <button className="control-btn playback-btn" onClick={onNext} title="下一首">
+              <button className="control-btn playback-btn" onClick={onNext} title={t.nextSong}>
                 <SkipForward size={13} />
               </button>
             </div>
@@ -105,7 +109,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             <button
               className="control-btn"
               onClick={onOpenSettingsWindow}
-              title={`開啟獨立偏好設定視窗 (${formattedOffset})`}
+              title={`${t.openSettingsNative} (${formattedOffset})`}
             >
               <Settings size={12} />
             </button>
@@ -113,7 +117,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             <button
               className={`control-btn ${!showLyrics ? 'btn-subtle-muted' : ''}`}
               onClick={onToggleLyrics}
-              title={showLyrics ? '隱藏動態歌詞 (保留播放器與封面)' : '顯示動態歌詞'}
+              title={showLyrics ? t.hideLyrics : t.showLyrics}
             >
               {showLyrics ? <Eye size={12} /> : <EyeOff size={12} />}
             </button>
@@ -121,7 +125,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             <button
               className={`control-btn ${isClickThrough ? 'active lock-active-text' : ''}`}
               onClick={onToggleClickThrough}
-              title={isClickThrough ? '滑鼠穿透中 (按 Alt+L 解鎖)' : '開啟滑鼠穿透 (快捷鍵 Alt+L)'}
+              title={isClickThrough ? t.clickThroughActive : t.clickThroughInactive}
             >
               {isClickThrough ? (
                 <span className="lock-btn-text">Alt+L</span>
