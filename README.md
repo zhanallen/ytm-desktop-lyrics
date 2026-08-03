@@ -75,3 +75,12 @@ To enable real-time lyric synchronization and desktop widget playback controls:
 - The Chrome extension reads non-personal playback metadata (song title, artist, album cover URL, current time, and pause state) strictly on `music.youtube.com`.
 - All playback data is transmitted exclusively via a local WebSocket connection (`ws://127.0.0.1:27890`) directly to your own local desktop application on the same machine.
 - No data is ever sent to or processed by any external cloud servers or third parties.
+
+---
+
+## ☕ 贊助與支持 (Support)
+
+如果您覺得這個工具對您有所幫助，歡迎請我喝杯咖啡支持持續維護與開發！
+
+[![Ko-Fi](https://img.shields.io/badge/Ko--fi-F16061?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/zhanallen)
+
