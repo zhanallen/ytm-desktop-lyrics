@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "YTM Desktop Lyrics Sync",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "YouTube Music 播放即時資訊同步擴充功能，將進度發送至桌面歌詞組件",
   "permissions": [],
   "host_permissions": [

@@ -1,9 +1,16 @@
+/**
+ * SettingsPage Component
+ * Dedicated secondary native window UI for managing lyrics sync offset, widget click-through,
+ * lyrics display toggles, and language options with real-time Tauri IPC synchronization.
+ */
+
 import React, { useState, useEffect } from 'react';
 import { emit, listen } from '@tauri-apps/api/event';
 import { RotateCcw, Clock, Keyboard, MousePointer, Globe } from 'lucide-react';
 import { LanguageMode, getTranslation } from '../i18n';
 
 export const SettingsPage: React.FC = () => {
+  /** Local offset state initialized from localStorage with fallback to 0. */
   const [offset, setOffset] = useState<number>(() => {
     const saved = localStorage.getItem('ytm_offset');
     if (saved !== null) {
@@ -12,15 +19,26 @@ export const SettingsPage: React.FC = () => {
     }
     return 0;
   });
+
+  /** Widget click-through state. */
   const [isClickThrough, setIsClickThrough] = useState<boolean>(false);
+
+  /** Widget lyrics visibility state. */
   const [showLyrics, setShowLyrics] = useState<boolean>(true);
+
+  /** Language mode preference initialized from localStorage with fallback to system default. */
   const [languageMode, setLanguageMode] = useState<LanguageMode>(() => {
     const saved = localStorage.getItem('ytm_lang');
     return saved === 'zh-TW' || saved === 'en' || saved === 'system' ? (saved as LanguageMode) : 'system';
   });
 
+  /** Resolved translation dictionary object for current language mode. */
   const t = getTranslation(languageMode);
 
+  /**
+   * Effect hook to subscribe to state synchronization events from the main widget application window.
+   * Includes strict isMounted checks and cleanup array to prevent duplicate event listener memory leaks.
+   */
   useEffect(() => {
     let isMounted = true;
     const unlistens: (() => void)[] = [];
@@ -42,51 +60,61 @@ export const SettingsPage: React.FC = () => {
       });
       if (isMounted) unlistens.push(u1); else u1();
 
-      // Ask main window for current state
+      // Request latest state snapshot from main widget window upon settings window creation
       emit('request-settings-state');
     };
 
     setupSync();
+
     return () => {
       isMounted = false;
       unlistens.forEach((unlisten) => unlisten());
     };
   }, []);
 
+  /**
+   * Handles lyric sync offset adjustments.
+   * Updates local UI state instantly for 0ms latency and broadcasts change-offset-delta to main window.
+   */
   const handleOffsetChange = (delta: number) => {
     const nextOffset = Math.round((offset + delta) * 10) / 10;
     setOffset(nextOffset);
     emit('change-offset-delta', delta);
   };
 
+  /** Resets lyric sync offset back to 0.0s and notifies main window. */
   const handleOffsetReset = () => {
     setOffset(0);
     emit('reset-offset');
   };
 
+  /** Toggles mouse click-through mode state and emits command to main window. */
   const handleToggleClickThrough = () => {
     setIsClickThrough(!isClickThrough);
     emit('toggle-click-through-cmd');
   };
 
+  /** Toggles lyrics visibility state and emits command to main window. */
   const handleToggleLyrics = () => {
     setShowLyrics(!showLyrics);
     emit('toggle-lyrics-cmd');
   };
 
+  /** Updates language mode preference, saves to localStorage, and broadcasts to main window. */
   const handleLanguageChange = (mode: LanguageMode) => {
     setLanguageMode(mode);
     localStorage.setItem('ytm_lang', mode);
     emit('change-language-cmd', mode);
   };
 
+  /** Formats offset number into readable string representation (e.g. +0.5s or -0.2s). */
   const numStr = Number(offset.toFixed(2)).toString();
   const formattedOffset = (offset >= 0 ? `+${numStr}` : numStr) + 's';
 
   return (
     <div className="settings-window-container">
       <div className="settings-modal-card">
-        {/* Native OS Window Body Content */}
+        {/* Native OS Window Body Content with Custom Scrollbar */}
         <div className="settings-modal-body">
           {/* Section 1: Lyric Offset Adjustment */}
           <div className="settings-section">

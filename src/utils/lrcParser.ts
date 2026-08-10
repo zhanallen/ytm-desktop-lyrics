@@ -3,6 +3,15 @@ export interface LyricLine {
   text: string;
 }
 
+/** Sanitizes lyric line text to remove HTML tags and dangerous scripts from community input */
+function sanitizeLyricText(input: string): string {
+  if (!input) return '';
+  return input
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<[^>]+>/g, '')
+    .trim();
+}
+
 /**
  * Advanced Ultra-Robust LRC Parser
  * Supports:
@@ -67,7 +76,7 @@ export function parseLrc(lrcText: string): LyricLine[] {
       lastIndex = timeRegex.lastIndex;
     }
 
-    const text = trimmed.slice(lastIndex).trim();
+    const text = sanitizeLyricText(trimmed.slice(lastIndex));
 
     // If valid text or timestamps exist
     if (timestamps.length > 0) {

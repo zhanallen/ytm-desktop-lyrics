@@ -1,6 +1,7 @@
 // YT Music Lyrics Sync - Content Script (Hybrid Millisecond-Precision Calibration Engine)
 (function () {
-  const WS_URLS = ['ws://127.0.0.1:27890', 'ws://localhost:27890'];
+  // WebSocket endpoints for connecting to the Tauri desktop app
+  const WS_URLS = ['ws://127.0.0.1:27890?token=ytm_sync_sec_8f9a2b7c4d5e', 'ws://localhost:27890?token=ytm_sync_sec_8f9a2b7c4d5e'];
   let currentWsIndex = 0;
   let socket = null;
   let reconnectTimer = null;
@@ -11,15 +12,17 @@
   let lastTrackTitle = '';
   let mseBaseOffset = 0; // Calibration base offset between video.currentTime and DOM relative song time
 
+  // State variables for desktop software version detection and GitHub update checking
   let desktopAppVersion = '';
   let latestVersionTag = '';
   let updateDownloadUrl = '';
   let hasUpdateAvailable = false;
 
-  // Internationalization (i18n) Engine for US & Global Users
+  // Internationalization (i18n) Engine: Detects user browser/system language (defaults to Traditional Chinese)
   const userLang = (navigator.language || navigator.userLanguage || 'zh-TW').toLowerCase();
   const isEn = userLang.startsWith('en');
 
+  // Translation dictionary providing localized UI strings and interactive dialog prompts
   const t = {
     notConnected: isEn ? 'Not Connected (Click to Open)' : '尚未連線（點擊開啟桌面軟體）',
     connected: isEn ? 'Connected to Desktop App' : '已連線到桌面軟體',
@@ -33,6 +36,10 @@
     confirmUpdateManual: (tag) => isEn ? `Desktop app update available (${tag})\nWould you like to download the update from GitHub?` : `桌面軟體有新版本 (${tag})\n是否前往 GitHub 下載更新？`
   };
 
+  /**
+   * Helper function: Compares two semantic version strings (e.g. "1.0.1" vs "v1.1.0").
+   * Returns -1 if v1 < v2, 1 if v1 > v2, and 0 if equal.
+   */
   function compareSemver(v1, v2) {
     const p1 = (v1 || '').replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
     const p2 = (v2 || '').replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
@@ -45,14 +52,47 @@
     return 0;
   }
 
+  /**
+   * Async Function: Queries GitHub Releases API to check if a newer desktop software version exists.
+   * Throttled to once every 12 hours via localStorage to prevent GitHub API rate limiting (CWE-770).
+   */
   async function checkDesktopAppUpdate(currentVersion) {
     if (!currentVersion) return;
+
+    const CACHE_KEY_TIME = 'ytm_update_last_check';
+    const CACHE_KEY_TAG = 'ytm_update_latest_tag';
+    const CACHE_KEY_URL = 'ytm_update_download_url';
+    const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
+
+    const lastCheck = parseInt(localStorage.getItem(CACHE_KEY_TIME) || '0', 10);
+    const cachedTag = localStorage.getItem(CACHE_KEY_TAG) || '';
+    const cachedUrl = localStorage.getItem(CACHE_KEY_URL) || '';
+
+    // If checked within 12 hours, use cached update state
+    if (Date.now() - lastCheck < TWELVE_HOURS_MS && cachedTag) {
+      if (compareSemver(currentVersion, cachedTag) < 0) {
+        hasUpdateAvailable = true;
+        latestVersionTag = cachedTag;
+        updateDownloadUrl = cachedUrl || 'https://github.com/zhanallen/ytm-desktop-lyrics/releases/latest';
+        updateBadgeStatus(true);
+      }
+      return;
+    }
+
     try {
       const res = await fetch('https://api.github.com/repos/zhanallen/ytm-desktop-lyrics/releases/latest');
       if (!res.ok) return;
       const data = await res.json();
       const latestTag = (data.tag_name || '').trim();
-      const htmlUrl = data.html_url || 'https://github.com/zhanallen/ytm-desktop-lyrics/releases/latest';
+      const rawHtmlUrl = (data.html_url || '').trim();
+      const OFFICIAL_REPO_URL = 'https://github.com/zhanallen/ytm-desktop-lyrics';
+      const htmlUrl = rawHtmlUrl.startsWith(OFFICIAL_REPO_URL) ? rawHtmlUrl : `${OFFICIAL_REPO_URL}/releases/latest`;
+
+      localStorage.setItem(CACHE_KEY_TIME, Date.now().toString());
+      if (latestTag) {
+        localStorage.setItem(CACHE_KEY_TAG, latestTag);
+        localStorage.setItem(CACHE_KEY_URL, htmlUrl);
+      }
 
       if (latestTag && compareSemver(currentVersion, latestTag) < 0) {
         hasUpdateAvailable = true;
@@ -66,7 +106,7 @@
           sessionStorage.setItem(promptKey, 'true');
           setTimeout(() => {
             if (confirm(t.confirmUpdateAuto(latestTag))) {
-              window.open(htmlUrl, '_blank');
+              window.open(htmlUrl, '_blank', 'noopener,noreferrer');
             }
           }, 800);
         }
@@ -74,11 +114,17 @@
     } catch (e) {}
   }
 
+  /**
+   * Event Handler: Processes click interactions on the header status badge.
+   * - If an update is available: prompts user to navigate to GitHub release download.
+   * - If connected: sends focusWindow command over WebSocket to bring desktop app to front.
+   * - If disconnected: launches desktop app via hidden iframe (custom ytm-lyrics:// protocol), starts fast polling, and sets fallback download prompt.
+   */
   function handleBadgeClick() {
     if (socket && socket.readyState === WebSocket.OPEN) {
       if (hasUpdateAvailable && latestVersionTag) {
         if (confirm(t.confirmUpdateManual(latestVersionTag))) {
-          window.open(updateDownloadUrl || 'https://github.com/zhanallen/ytm-desktop-lyrics/releases/latest', '_blank');
+          window.open(updateDownloadUrl || 'https://github.com/zhanallen/ytm-desktop-lyrics/releases/latest', '_blank', 'noopener,noreferrer');
           return;
         }
       }
@@ -117,13 +163,17 @@
       setTimeout(() => {
         if (!socket || socket.readyState !== WebSocket.OPEN) {
           if (confirm(t.confirmDownload)) {
-            window.open('https://github.com/zhanallen/ytm-desktop-lyrics/releases', '_blank');
+            window.open('https://github.com/zhanallen/ytm-desktop-lyrics/releases', '_blank', 'noopener,noreferrer');
           }
         }
       }, 4000);
     }
   }
 
+  /**
+   * DOM Function: Creates the status badge element and inserts it into YouTube Music top navigation header.
+   * Places the badge in `ytmusic-nav-bar #right-content` before the settings/avatar button, or falls back to body fixed position.
+   */
   function createStatusBadge() {
     let existing = document.getElementById('ytm-lyrics-sync-badge');
     if (existing) {
@@ -132,10 +182,16 @@
       statusBadge = document.createElement('div');
       statusBadge.id = 'ytm-lyrics-sync-badge';
       statusBadge.title = t.titleNotConnected;
-      statusBadge.innerHTML = `
-        <div class="ytm-sync-dot"></div>
-        <span class="ytm-sync-text">${t.notConnected}</span>
-      `;
+
+      const dotEl = document.createElement('div');
+      dotEl.className = 'ytm-sync-dot';
+
+      const textEl = document.createElement('span');
+      textEl.className = 'ytm-sync-text';
+      textEl.textContent = t.notConnected;
+
+      statusBadge.appendChild(dotEl);
+      statusBadge.appendChild(textEl);
       statusBadge.addEventListener('click', handleBadgeClick);
     }
 
@@ -161,6 +217,12 @@
     }
   }
 
+  /**
+   * UI Function: Updates the status badge visual indicators (text label, tooltip, and dot indicator color).
+   * - Connected (Up-to-date): Green dot (#4CAF50)
+   * - Connected (Update available): Orange/Gold dot (#FFA726)
+   * - Disconnected: Red dot (#FF5252)
+   */
   function updateBadgeStatus(connected, text) {
     if (!statusBadge) createStatusBadge();
     if (!statusBadge) return;
@@ -288,7 +350,10 @@
     }
   }
 
-  // Connect to Tauri WebSocket Server
+  /**
+   * Network Function: Establishes a WebSocket connection to the Tauri desktop application.
+   * Handles handshake messages (`type: "hello"`) containing app version, triggers update check, and manages fallback timers for legacy v1.0.1 desktop software.
+   */
   function connectWebSocket() {
     if (socket && (socket.readyState === WebSocket.CONNECTING || socket.readyState === WebSocket.OPEN)) {
       return;

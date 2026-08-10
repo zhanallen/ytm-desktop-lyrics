@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>YTM Desktop Lyrics - UI Redesign Template</title>
+  <title>YTM Desktop Lyrics - Current App UI Export</title>
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -12,7 +12,7 @@
 </head>
 <body style="background: #0f172a; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh;">
 
-  <!-- Main Widget Container -->
+  <!-- Main Widget Container (Exact Current App UI) -->
   <div class="widget-container" style="width: 360px; height: 500px;">
 
     <!-- Header Control Bar -->
@@ -63,19 +63,10 @@
             </div>
           </div>
 
-          <!-- Right: Utility Controls & Offset Adjustment -->
+          <!-- Right: Utility Controls -->
           <div class="utility-controls-group">
-            <!-- Offset Adjust Panel (Hidden by Default) -->
-            <div class="button-group offset-panel" style="display: none; padding: 2px 4px;">
-              <button class="control-btn offset-btn" style="padding: 2px 4px;" title="-0.5s">-0.5</button>
-              <button class="control-btn offset-btn" style="padding: 2px 4px;" title="-0.1s">-0.1</button>
-              <button class="control-btn offset-btn offset-reset-btn" style="padding: 2px 5px; font-size: 10px;" title="重置微調">+0.0s</button>
-              <button class="control-btn offset-btn" style="padding: 2px 4px;" title="+0.1s">+0.1</button>
-              <button class="control-btn offset-btn" style="padding: 2px 4px;" title="+0.5s">+0.5</button>
-            </div>
-
-            <!-- Settings Button -->
-            <button class="control-btn btn-settings" title="歌詞延遲微調 (+0.0s)">
+            <!-- Settings Button (Triggers Native Preferences Dialog) -->
+            <button class="control-btn btn-settings" title="開啟偏好設定選單 (+0.0s)">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="3"></circle>
                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>

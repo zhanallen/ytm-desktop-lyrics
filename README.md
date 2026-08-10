@@ -68,13 +68,14 @@ npm run tauri build
 ## 🔒 隱私權政策 (Privacy Policy)
 
 ### Data Collection & Usage Disclosure
-YTM Desktop Lyrics Sync does NOT collect, store, share, or transmit any user personal data, browsing history, credentials, or cookies. 
+YTM Desktop Lyrics Sync does NOT collect, store, share, or transmit any user personal data, browsing history, account credentials, or cookies. 
 
-### Functionality & Local Processing
-To enable real-time lyric synchronization and desktop widget playback controls:
-- The Chrome extension reads non-personal playback metadata (song title, artist, album cover URL, current time, and pause state) strictly on `music.youtube.com`.
-- All playback data is transmitted exclusively via a local WebSocket connection (`ws://127.0.0.1:27890`) directly to your own local desktop application on the same machine.
-- No data is ever sent to or processed by any external cloud servers or third parties.
+### Local Processing & External API Interactions
+To enable real-time lyric synchronization, playback control, and software updates:
+- **Local Synchronization**: Playback metadata (song title, artist name, album cover URL, playback progress) is read exclusively on `music.youtube.com` and transmitted via an authenticated local WebSocket connection (`ws://127.0.0.1:27890`) strictly between your browser extension and desktop widget on your local machine.
+- **Dynamic Lyrics Fetching**: Non-personal song titles and artist names are sent to public open-source API services (`https://lrclib.net`) to retrieve synchronized LRC lyrics.
+- **Software Update Checking**: Periodically requests release version info from GitHub API (`https://api.github.com/repos/zhanallen/ytm-desktop-lyrics/releases/latest`) to notify you of available software updates.
+- **Privacy Guarantee**: No personal data or user identity is ever tracked, stored, or sold.
 
 ---
 

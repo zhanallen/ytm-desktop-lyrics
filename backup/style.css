@@ -9,8 +9,7 @@
   --text-muted: rgba(255, 255, 255, 0.58);
   --text-subtle: rgba(255, 255, 255, 0.32);
 
-  /* Ultra-Fast Responsive Linear Scaling starting from 295px min window width */
-  --player-left-col-width: clamp(64px, 35vw - 39.25px, 280px);
+  --player-left-col-width: clamp(64px, 22vw - 10px, 260px);
 }
 
 * {
@@ -73,8 +72,8 @@ html, body {
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
+  gap: 10px;
+  padding: 8px 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(0, 0, 0, 0.18);
   flex-shrink: 0;

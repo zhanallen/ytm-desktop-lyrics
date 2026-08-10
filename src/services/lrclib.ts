@@ -1,4 +1,4 @@
-import { toTraditional, toSimplified, countTraditionalFeatures } from '../utils/chineseConverter.js';
+import { toTraditional, toSimplified, countTraditionalFeatures } from '../utils/chineseConverter';
 
 export interface LrclibResponse {
   id?: number;
@@ -14,6 +14,7 @@ const cache = new Map<string, LrclibResponse | null>();
 
 /**
  * Common Chinese <-> English artist alias mapping dictionary
+ * Includes C-Pop and popular Western/DJ Chinese translated names
  */
 const ARTIST_ALIASES: [string, string][] = [
   ['周興哲', 'eric chou'],
@@ -37,6 +38,32 @@ const ARTIST_ALIASES: [string, string][] = [
   ['茄子蛋', 'eggplantegg'],
   ['落日飛車', 'sunset rollercoaster'],
   ['冰球樂團', 'icyball'],
+  ['格里芬', 'gryffin'],
+  ['艾利·杜赫', 'elley duhé'],
+  ['艾利杜赫', 'elley duhe'],
+  ['泰勒絲', 'taylor swift'],
+  ['泰勒·斯威夫特', 'taylor swift'],
+  ['艾德·希蘭', 'ed sheeran'],
+  ['紅髮艾德', 'ed sheeran'],
+  ['亞莉安娜', 'ariana grande'],
+  ['亞莉安娜·格蘭德', 'ariana grande'],
+  ['小賈斯汀', 'justin bieber'],
+  ['賈斯汀·比伯', 'justin bieber'],
+  ['艾倫·沃克', 'alan walker'],
+  ['老菸槍雙人組', 'the chainsmokers'],
+  ['卡爾文·哈里斯', 'calvin harris'],
+  ['大衛·庫塔', 'david guetta'],
+  ['瑪麗亞·凱莉', 'mariah carey'],
+  ['火星人布魯諾', 'bruno mars'],
+  ['杜娃·黎波', 'dua lipa'],
+  ['比莉·艾利什', 'billie eilish'],
+  ['怪奇比莉', 'billie eilish'],
+  ['奧莉維亞·羅德里戈', 'olivia rodrigo'],
+  ['謎幻樂團', 'imagine dragons'],
+  ['酷玩樂團', 'coldplay'],
+  ['魔力紅', 'maroon 5'],
+  ['西城男孩', 'westlife'],
+  ['後街男孩', 'backstreet boys'],
 ];
 
 /**
@@ -107,16 +134,18 @@ function sanitizeArtistName(artist: string): string {
 }
 
 /**
- * Check if targetArtist and itemArtist are alias matches (e.g. 周興哲 <-> Eric Chou)
+ * Check if targetArtist and itemArtist are alias matches (e.g. 周興哲 <-> Eric Chou, 格里芬 <-> Gryffin)
  */
 function isArtistAliasMatch(targetArtist: string, itemArtist: string): boolean {
   if (!targetArtist || !itemArtist) return false;
-  const t = targetArtist.toLowerCase();
-  const i = itemArtist.toLowerCase();
+  const t = targetArtist.toLowerCase().replace(/[\s\·\-\.]/g, '');
+  const i = itemArtist.toLowerCase().replace(/[\s\·\-\.]/g, '');
 
   for (const [zh, en] of ARTIST_ALIASES) {
-    if ((t.includes(zh) || zh.includes(t)) && (i.includes(en) || en.includes(i))) return true;
-    if ((i.includes(zh) || zh.includes(i)) && (t.includes(en) || en.includes(t))) return true;
+    const zhNorm = zh.toLowerCase().replace(/[\s\·\-\.]/g, '');
+    const enNorm = en.toLowerCase().replace(/[\s\·\-\.]/g, '');
+    if ((t.includes(zhNorm) || zhNorm.includes(t)) && (i.includes(enNorm) || enNorm.includes(i))) return true;
+    if ((i.includes(zhNorm) || zhNorm.includes(i)) && (t.includes(enNorm) || enNorm.includes(t))) return true;
   }
   return false;
 }
@@ -174,7 +203,7 @@ function findBestMatch(
       itemSimpNorm.includes(norm(targetTrackSimp)) || itemSimpNorm.includes(norm(targetPureTrackSimp))
     );
     
-    // Calculate artist match (including cross S2T and Chinese/English aliases like 周興哲 vs Eric Chou)
+    // Calculate artist match (including cross S2T and Chinese/English aliases like 格里芬 vs Gryffin)
     const aliasMatch = isArtistAliasMatch(targetArtist, itemArtist);
 
     const artistExact = aliasMatch || (targetArtist && itemArtist && (
@@ -216,19 +245,26 @@ function findBestMatch(
       score -= 150;
     }
 
+    // Check if targetArtist is Chinese while candidate artist is English/ASCII
+    const targetIsChinese = /[\u4e00-\u9fa5]/.test(targetArtist);
+    const itemIsEnglish = /^[\x00-\x7F]+$/.test(itemArtist);
+
     // 3. Artist match score & mismatch penalty
     if (targetArtist && itemArtist) {
       if (artistExact) {
         score += 100;
       } else if (artistPartial) {
         score += 70;
+      } else if (trackExact && targetIsChinese && itemIsEnglish) {
+        // Mild deduction (-50) if Chinese-translated artist name plays an exact English track title
+        score -= 50;
       } else {
         // Severe penalty (-1000) if candidate artist is completely unrelated to target artist
         score -= 1000;
       }
     }
 
-    // 4. Track name match score
+    // 4. Track name match score (Dominant bonus for exact title match; heavy penalty if title differs)
     if (itemTrack && targetTrack) {
       if (trackExact) {
         score += 300;
@@ -265,11 +301,16 @@ function findBestMatch(
  * Fetches lyrics from LRCLIB API with multi-query concurrent parallel requests
  */
 export async function fetchLyrics(trackName: string, artistName: string, duration?: number): Promise<LrclibResponse | null> {
-  if (!trackName) return null;
+  if (!trackName || typeof trackName !== 'string') return null;
 
-  const cleanTrack = sanitizeTrackTitle(trackName);
+  // Sanitize control characters and clamp max string length to prevent forged query attacks
+  const rawTrack = trackName.replace(/[\u0000-\u001F]/g, '').trim().slice(0, 200);
+  const rawArtist = (artistName || '').replace(/[\u0000-\u001F]/g, '').trim().slice(0, 200);
+  if (!rawTrack) return null;
+
+  const cleanTrack = sanitizeTrackTitle(rawTrack);
   const pureTrack = stripAllBrackets(cleanTrack);
-  const cleanArtist = sanitizeArtistName(artistName);
+  const cleanArtist = sanitizeArtistName(rawArtist);
 
   const cacheKey = `${cleanTrack.toLowerCase()}__${cleanArtist.toLowerCase()}__${Math.round(duration || 0)}`;
   if (cache.has(cacheKey)) {
@@ -298,9 +339,11 @@ export async function fetchLyrics(trackName: string, artistName: string, duratio
       searchUrls.push(`https://lrclib.net/api/search?q=${encodeURIComponent(pureTrack)}`);
     }
 
-    // English artist alias queries (e.g. 周興哲 -> Eric Chou)
+    // English artist alias queries (e.g. 周興哲 -> Eric Chou, 格里芬 -> Gryffin)
+    const cleanArtistNorm = cleanArtist.toLowerCase().replace(/[\s\·\-\.]/g, '');
     for (const [zh, en] of ARTIST_ALIASES) {
-      if (cleanArtist.toLowerCase().includes(zh)) {
+      const zhNorm = zh.toLowerCase().replace(/[\s\·\-\.]/g, '');
+      if (cleanArtistNorm.includes(zhNorm) || zhNorm.includes(cleanArtistNorm)) {
         searchUrls.push(`https://lrclib.net/api/search?q=${encodeURIComponent(`${pureTrack} ${en}`)}`);
       }
     }
@@ -318,14 +361,11 @@ export async function fetchLyrics(trackName: string, artistName: string, duratio
       searchUrls.push(`https://lrclib.net/api/search?q=${encodeURIComponent(simpPureTrack)}`);
     }
 
-    // Traditional variant query (e.g. 温嵐 -> 溫嵐)
-    const tradArtist = toTraditional(cleanArtist);
-    if (tradArtist !== cleanArtist) {
-      searchUrls.push(`https://lrclib.net/api/search?q=${encodeURIComponent(`${pureTrack} ${tradArtist}`.trim())}`);
-    }
+    // Deduplicate candidate URLs and limit max parallel requests to top 4 to prevent Rate Limiting (HTTP 429)
+    const uniqueSearchUrls = Array.from(new Set(searchUrls)).slice(0, 4);
 
-    // Fire all endpoints concurrently for maximum speed and recall
-    const results = await Promise.allSettled(searchUrls.map(url => fetch(url)));
+    // Fire deduplicated endpoints concurrently for maximum speed and recall
+    const results = await Promise.allSettled(uniqueSearchUrls.map(url => fetch(url)));
 
     const candidatePool: LrclibResponse[] = [];
     const seenIds = new Set<number>();

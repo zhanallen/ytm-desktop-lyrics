@@ -1,3 +1,9 @@
+/**
+ * Core Tauri Backend Module (lib.rs)
+ * Implements Win32 native subclassing, dynamic physical DPI window resizing,
+ * system tray context menu i18n, global keyboard hotkeys, and WebSocket server runtime initialization.
+ */
+
 mod ws_server;
 
 use tauri::{Emitter, Manager};
@@ -6,15 +12,26 @@ use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use std::sync::atomic::{AtomicI32, Ordering};
 
+/**
+ * Global Atomic I32 storing the locked minimum physical window height in physical pixels.
+ * When > 0, Win32 WM_SIZING hook strictly clamps window height to this exact value.
+ * When 0, Win32 WM_SIZING dynamically calculates min height based on responsive album cover ratio.
+ */
 pub static DYNAMIC_MIN_PHYS_HEIGHT: AtomicI32 = AtomicI32::new(0);
 
-// Struct to store references to System Tray Menu Items for real-time i18n updating
+/**
+ * State struct storing handles to System Tray Context Menu Items.
+ * Allows real-time dynamic text updating when user switches language preferences between Traditional Chinese and English.
+ */
 pub struct TrayMenuItems {
     pub toggle: MenuItem<tauri::Wry>,
     pub settings: MenuItem<tauri::Wry>,
     pub quit: MenuItem<tauri::Wry>,
 }
 
+/**
+ * Tauri Command: Updates system tray menu item text based on active language choice.
+ */
 #[tauri::command]
 fn update_tray_language(app_handle: tauri::AppHandle, is_english: bool) -> Result<(), String> {
     if let Some(tray_items) = app_handle.try_state::<TrayMenuItems>() {
@@ -31,16 +48,25 @@ fn update_tray_language(app_handle: tauri::AppHandle, is_english: bool) -> Resul
     Ok(())
 }
 
+/**
+ * Tauri Command: Toggles window mouse cursor click-through mode.
+ */
 #[tauri::command]
 fn set_ignore_cursor_events(window: tauri::Window, ignore: bool) -> Result<(), String> {
     window.set_ignore_cursor_events(ignore).map_err(|e| e.to_string())
 }
 
+/**
+ * Tauri Command: Initiates native window dragging from custom frontend DOM region.
+ */
 #[tauri::command]
 fn start_drag(window: tauri::Window) -> Result<(), String> {
     window.start_dragging().map_err(|e| e.to_string())
 }
 
+/**
+ * Tauri Command: Broadcasts player control commands (playPause, next, previous) to WebSocket clients.
+ */
 #[tauri::command]
 fn send_player_command(command: String) -> Result<(), String> {
     let payload = serde_json::json!({ "command": command }).to_string();
@@ -48,6 +74,9 @@ fn send_player_command(command: String) -> Result<(), String> {
     Ok(())
 }
 
+/**
+ * Tauri Command: Resizes physical window dimensions with physical pixel subpixel precision.
+ */
 #[tauri::command]
 fn resize_physical_window(window: tauri::Window, width: u32, height: u32) -> Result<(), String> {
     let _ = window.set_min_size(Some(tauri::Size::Logical(tauri::LogicalSize::new(295.0, 86.0))));
@@ -55,6 +84,9 @@ fn resize_physical_window(window: tauri::Window, width: u32, height: u32) -> Res
     window.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(width, height))).map_err(|e| e.to_string())
 }
 
+/**
+ * Tauri Command: Updates locked minimum physical height atomically in DYNAMIC_MIN_PHYS_HEIGHT.
+ */
 #[tauri::command]
 fn set_min_height_only(window: tauri::Window, height: u32) -> Result<(), String> {
     DYNAMIC_MIN_PHYS_HEIGHT.store(height as i32, Ordering::SeqCst);
@@ -62,6 +94,10 @@ fn set_min_height_only(window: tauri::Window, height: u32) -> Result<(), String>
     Ok(())
 }
 
+/**
+ * Tauri Command: Locks or unlocks physical window height when expanding/collapsing lyrics view.
+ * Prevents subpixel incremental drift by using exact physical pixel values.
+ */
 #[tauri::command]
 fn lock_window_height(window: tauri::Window, width: u32, height: u32, is_locked: bool) -> Result<(), String> {
     if is_locked {
@@ -78,12 +114,18 @@ fn lock_window_height(window: tauri::Window, width: u32, height: u32, is_locked:
     window.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(target_width, height))).map_err(|e| e.to_string())
 }
 
+/**
+ * Tauri Command: Emits event to frontend to toggle lyrics visibility.
+ */
 #[tauri::command]
 fn toggle_lyrics_visibility(app_handle: tauri::AppHandle) -> Result<(), String> {
     let _ = app_handle.emit("toggle-lyrics-visibility", ());
     Ok(())
 }
 
+/**
+ * Tauri Command: Opens or focuses the native secondary preferences window (360x420, standard window level).
+ */
 #[tauri::command]
 fn open_settings_window(app_handle: tauri::AppHandle) -> Result<(), String> {
     if let Some(existing) = app_handle.get_webview_window("settings") {
@@ -105,13 +147,17 @@ fn open_settings_window(app_handle: tauri::AppHandle) -> Result<(), String> {
     .maximizable(false)
     .decorations(true)
     .transparent(false)
-    .always_on_top(true)
+    .always_on_top(false)
     .center()
     .build();
 
     Ok(())
 }
 
+/**
+ * Win32 Subclassing Module for Windows OS.
+ * Intercepts low-level WM_SIZING and WM_GETMINMAXINFO window messages to enforce smooth real-time physical aspect ratio limits.
+ */
 #[cfg(target_os = "windows")]
 mod win32_subclass {
     use super::DYNAMIC_MIN_PHYS_HEIGHT;
@@ -125,6 +171,10 @@ mod win32_subclass {
 
     const SUBCLASS_ID: usize = 1001;
 
+    /**
+     * Subclass Procedure Function.
+     * Intercepts window resizing events to dynamically calculate DPI scaling factor and enforce minimum physical height.
+     */
     unsafe extern "system" fn subclass_proc(
         hwnd: HWND,
         msg: u32,
@@ -173,6 +223,7 @@ mod win32_subclass {
         DefSubclassProc(hwnd, msg, wparam, lparam)
     }
 
+    /** Attaches Win32 window subclassing hook to target HWND. */
     pub fn setup_win32_subclass(hwnd_val: isize) {
         unsafe {
             SetWindowSubclass(hwnd_val as HWND, Some(subclass_proc), SUBCLASS_ID, 0);
@@ -180,8 +231,49 @@ mod win32_subclass {
     }
 }
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+/**
+ * Windows Registry Protocol Auto-Registration Function.
+ * Automatically registers or updates the `ytm-lyrics://` custom URL scheme in Windows User Registry (HKCU).
+ * Binds the protocol handler to the exact current executable path of this app without requiring Admin privileges (UAC).
+ * Uses CREATE_NO_WINDOW (0x08000000) creation_flags to prevent flashing console/CMD windows on startup.
+ */
+#[cfg(target_os = "windows")]
+fn auto_register_windows_protocol() {
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_str) = exe_path.to_str() {
+            let sanitized_exe = exe_str.replace("\"", "\\\"");
+            let cmd_val = format!("\"{}\" \"%1\"", sanitized_exe);
+            let _ = std::process::Command::new("reg")
+                .creation_flags(CREATE_NO_WINDOW)
+                .args(&["add", "HKCU\\Software\\Classes\\ytm-lyrics", "/ve", "/d", "URL:YTM Desktop Lyrics Protocol", "/f"])
+                .output();
+            let _ = std::process::Command::new("reg")
+                .creation_flags(CREATE_NO_WINDOW)
+                .args(&["add", "HKCU\\Software\\Classes\\ytm-lyrics", "/v", "URL Protocol", "/d", "", "/f"])
+                .output();
+            let _ = std::process::Command::new("reg")
+                .creation_flags(CREATE_NO_WINDOW)
+                .args(&["add", "HKCU\\Software\\Classes\\ytm-lyrics\\shell\\open\\command", "/ve", "/d", &cmd_val, "/f"])
+                .output();
+        }
+    }
+}
+
+/**
+ * Main Application Runner.
+ * Sets up global shortcuts, system tray context menus, Tokio WebSocket task, and registers Tauri command handlers.
+ */
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Automatically register/update Windows Custom URL Scheme (ytm-lyrics://) for current executable
+    #[cfg(target_os = "windows")]
+    auto_register_windows_protocol();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {

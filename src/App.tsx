@@ -1,3 +1,10 @@
+/**
+ * Main Application Module (App.tsx)
+ * Serves as the primary entry point and state management engine for the YTM Desktop Lyrics Widget.
+ * Handles window route branching, WebSocket/Tauri track synchronization, subpixel DPI window height locking,
+ * persistent localStorage state retention, and cross-window settings broadcasting.
+ */
+
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, emit } from '@tauri-apps/api/event';
@@ -8,6 +15,7 @@ import { LyricsViewer } from './components/LyricsViewer';
 import { SettingsPage } from './components/SettingsPage';
 import { LanguageMode, detectLanguage } from './i18n';
 
+/** Interface defining YouTube Music track data payload received via IPC / WebSocket. */
 interface TrackPayload {
   title: string;
   artist: string;
@@ -18,12 +26,17 @@ interface TrackPayload {
   timestamp: number;
 }
 
+/**
+ * Main Entry Component.
+ * Branches execution based on URL search query or hash (`window=settings`) to render either
+ * the secondary native SettingsPage or the primary desktop MainWidgetApp.
+ */
 export const App: React.FC = () => {
-  // Check if current window route is the settings window
+  // Check if current window route is the settings window using URLSearchParams
+  const searchParams = new URLSearchParams(window.location.search);
   const isSettingsRoute =
-    window.location.search.includes('window=settings') ||
-    window.location.hash.includes('settings') ||
-    window.location.href.includes('window=settings');
+    searchParams.get('window') === 'settings' ||
+    window.location.hash.includes('settings');
 
   if (isSettingsRoute) {
     return <SettingsPage />;
@@ -32,10 +45,22 @@ export const App: React.FC = () => {
   return <MainWidgetApp />;
 };
 
+/**
+ * Main Widget Application Component.
+ * Contains state for track metadata, synced lyrics, lyric time offset, click-through,
+ * lyrics display collapse state, and language preference.
+ */
 const MainWidgetApp: React.FC = () => {
+  /** Active playing track metadata. */
   const [track, setTrack] = useState<TrackPayload | null>(null);
+
+  /** Parsed LRC lyric lines array. */
   const [lyrics, setLyrics] = useState<LyricLine[]>([]);
+
+  /** Loading indicator state for LRCLIB API fetching. */
   const [isLoadingLyrics, setIsLoadingLyrics] = useState<boolean>(false);
+
+  /** Lyric time synchronization offset in seconds, initialized from localStorage. */
   const [offset, setOffset] = useState<number>(() => {
     const saved = localStorage.getItem('ytm_offset');
     if (saved !== null) {
@@ -44,13 +69,20 @@ const MainWidgetApp: React.FC = () => {
     }
     return 0;
   });
+
+  /** Mouse click-through state (ignore cursor events). */
   const [isClickThrough, setIsClickThrough] = useState<boolean>(false);
+
+  /** Lyrics display visibility toggle state. */
   const [showLyrics, setShowLyrics] = useState<boolean>(true);
+
+  /** Language preference mode ('system', 'zh-TW', or 'en'), initialized from localStorage with system auto default. */
   const [languageMode, setLanguageMode] = useState<LanguageMode>(() => {
     const saved = localStorage.getItem('ytm_lang');
     return saved === 'zh-TW' || saved === 'en' || saved === 'system' ? (saved as LanguageMode) : 'system';
   });
 
+  /* Mutable References for Stable Subpixel Calculations and Async Event Guards */
   const currentSongRef = useRef<string>('');
   const latestTrackRef = useRef<TrackPayload | null>(null);
   const isClickThroughRef = useRef<boolean>(false);
@@ -58,24 +90,34 @@ const MainWidgetApp: React.FC = () => {
   const offsetRef = useRef<number>(0);
   const languageModeRef = useRef<LanguageMode>('system');
   
-  // Real-time Memory for Expanded Window Height in Physical Pixels (Default 560px)
+  /** Real-time memory for expanded window physical height (default 560px), stored using Math.floor. */
   const savedExpandedHeightRef = useRef<number>(560);
+
+  /** WebSocket connection handle for direct browser extension messaging. */
   const wsRef = useRef<WebSocket | null>(null);
 
+  /** Keep click-through ref in sync with state. */
   useEffect(() => {
     isClickThroughRef.current = isClickThrough;
   }, [isClickThrough]);
 
+  /** Keep show-lyrics ref in sync with state. */
   useEffect(() => {
     showLyricsRef.current = showLyrics;
   }, [showLyrics]);
 
+  /**
+   * Persists offset changes to localStorage and broadcasts updated state to settings window.
+   */
   useEffect(() => {
     offsetRef.current = offset;
     localStorage.setItem('ytm_offset', offset.toString());
     broadcastStateToSettings();
   }, [offset]);
 
+  /**
+   * Updates language mode ref and triggers native system tray context menu text update via Rust IPC.
+   */
   useEffect(() => {
     languageModeRef.current = languageMode;
     const activeLang = detectLanguage(languageMode);
@@ -85,7 +127,9 @@ const MainWidgetApp: React.FC = () => {
   const lastMinHeightRef = useRef<number>(0);
   const isInitialMountRef = useRef<boolean>(true);
 
-  // Broadcast current state to Settings window whenever it asks
+  /**
+   * Broadcasts current widget configuration state snapshot to secondary settings window via Tauri IPC event.
+   */
   const broadcastStateToSettings = () => {
     const storedLang = localStorage.getItem('ytm_lang');
     const activeMode = storedLang === 'zh-TW' || storedLang === 'en' || storedLang === 'system'
@@ -100,7 +144,9 @@ const MainWidgetApp: React.FC = () => {
     });
   };
 
-  // Continuously update savedExpandedHeightRef using Math.floor
+  /**
+   * Continuously monitors window resizing in expanded mode and records physical height using Math.floor for DPI stability.
+   */
   useEffect(() => {
     const handleWindowResize = () => {
       if (showLyricsRef.current) {
@@ -120,7 +166,9 @@ const MainWidgetApp: React.FC = () => {
     return () => window.removeEventListener('resize', handleWindowResize);
   }, []);
 
-  // Synchronize live DOM header height directly with Win32 WM_SIZING hook (Original Guard Unchanged)
+  /**
+   * Synchronizes DOM header element height with Win32 WM_SIZING hook for dynamic minimum window height clamping.
+   */
   useEffect(() => {
     const headerEl = document.querySelector('.header-bar') as HTMLElement;
     if (!headerEl) return;
@@ -158,7 +206,9 @@ const MainWidgetApp: React.FC = () => {
     };
   }, [showLyrics, track?.title]);
 
-  // Clean single-send command dispatch
+  /**
+   * Dispatches playback control commands (playPause, next, previous) via Tauri command or WebSocket fallback.
+   */
   const sendPlayerCommand = async (cmd: 'playPause' | 'next' | 'previous') => {
     try {
       await invoke('send_player_command', { command: cmd });
@@ -171,7 +221,9 @@ const MainWidgetApp: React.FC = () => {
     }
   };
 
-  // Toggle lyrics using Math.floor (無條件捨去) for guaranteed subpixel stability
+  /**
+   * Toggles lyrics display visibility with 0-frame flickering prevention and Math.floor subpixel stability.
+   */
   const handleToggleLyrics = async () => {
     const nextShowLyrics = !showLyricsRef.current;
 
@@ -222,7 +274,10 @@ const MainWidgetApp: React.FC = () => {
     }
   };
 
-  // Handle incoming track payload with Instant Real-Time Re-alignment
+  /**
+   * Processes incoming YouTube Music track metadata payload.
+   * Triggers LRCLIB API search when song changes and parses returned LRC format synced lyrics.
+   */
   const handleUpdatePayload = async (payload: TrackPayload) => {
     if (!payload || !payload.title) return;
 
@@ -254,6 +309,7 @@ const MainWidgetApp: React.FC = () => {
     }
   };
 
+  /** Toggles mouse cursor click-through mode. */
   const toggleClickThrough = async (targetState?: boolean) => {
     const nextState = targetState !== undefined ? targetState : !isClickThroughRef.current;
     setIsClickThrough(nextState);
@@ -266,6 +322,7 @@ const MainWidgetApp: React.FC = () => {
     }
   };
 
+  /** Opens or focuses the native secondary settings window. */
   const handleOpenSettingsWindow = async () => {
     try {
       await invoke('open_settings_window');
@@ -274,6 +331,10 @@ const MainWidgetApp: React.FC = () => {
     }
   };
 
+  /**
+   * Lifecycle Effect Hook for registering Tauri IPC event listeners and WebSocket server connection.
+   * Includes strict isMounted lifecycle guards and unlisten cleanup array to guarantee zero duplicate listeners.
+   */
   useEffect(() => {
     let isMounted = true;
     const unlistens: (() => void)[] = [];
@@ -351,7 +412,7 @@ const MainWidgetApp: React.FC = () => {
 
     const connectDirectWs = () => {
       try {
-        const ws = new WebSocket('ws://127.0.0.1:27890');
+        const ws = new WebSocket('ws://127.0.0.1:27890?token=ytm_sync_sec_8f9a2b7c4d5e');
         wsRef.current = ws;
 
         ws.onmessage = (msg) => {
@@ -381,6 +442,7 @@ const MainWidgetApp: React.FC = () => {
     };
   }, []);
 
+  /** Adjusts offset by delta and persists to localStorage. */
   const handleOffsetChange = (delta: number) => {
     setOffset((prev) => {
       const next = Math.round((prev + delta) * 10) / 10;
@@ -389,12 +451,13 @@ const MainWidgetApp: React.FC = () => {
     });
   };
 
+  /** Resets offset to 0 and persists to localStorage. */
   const handleOffsetReset = () => {
     setOffset(0);
     localStorage.setItem('ytm_offset', '0');
   };
 
-  // Compute active lyric line index
+  /** Computes index of currently highlighted lyric line based on track playback time and sync offset. */
   const activeIndex = getActiveLyricIndex(lyrics, track?.currentTime || 0, offset);
 
   return (

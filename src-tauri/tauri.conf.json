@@ -1,12 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "ytm-desktop-lyrics",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "identifier": "com.ytm.desktoplyrics",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://localhost:14280",
     "frontendDist": "../dist"
   },
   "app": {
@@ -38,14 +38,14 @@
         "maximizable": false,
         "decorations": true,
         "transparent": false,
-        "alwaysOnTop": true,
+        "alwaysOnTop": false,
         "center": true,
         "visible": false,
         "url": "index.html?window=settings"
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://lrclib.net ws://127.0.0.1:27890 https://api.github.com; img-src 'self' https: data:;"
     }
   },
   "bundle": {

@@ -1,6 +1,18 @@
+/**
+ * Internationalization (i18n) Module
+ * Handles language detection, locale mapping, and string translations for Chinese (zh-TW) and English (en).
+ */
+
+/** Supported user language modes: System Auto, Traditional Chinese, or English. */
 export type LanguageMode = 'system' | 'zh-TW' | 'en';
+
+/** Resolved active language locale used for dictionary lookups. */
 export type ActiveLanguage = 'zh-TW' | 'en';
 
+/**
+ * Detects the active language based on user configuration or OS locale settings.
+ * If mode is 'system', inspects navigator.language to default to 'zh-TW' for Chinese locales, or 'en' for others.
+ */
 export function detectLanguage(mode: LanguageMode): ActiveLanguage {
   if (mode === 'zh-TW') return 'zh-TW';
   if (mode === 'en') return 'en';
@@ -9,6 +21,7 @@ export function detectLanguage(mode: LanguageMode): ActiveLanguage {
   return sysLang.startsWith('zh') ? 'zh-TW' : 'en';
 }
 
+/** Translation dictionary containing all localized UI text for header controls, lyrics status, and settings window. */
 export const translations = {
   'zh-TW': {
     ytMusic: 'YouTube Music',
@@ -82,6 +95,9 @@ export const translations = {
   },
 };
 
+/**
+ * Retrieves the translation string object matching the given language mode.
+ */
 export function getTranslation(langMode: LanguageMode) {
   const activeLang = detectLanguage(langMode);
   return translations[activeLang];

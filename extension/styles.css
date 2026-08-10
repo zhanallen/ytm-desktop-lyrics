@@ -1,3 +1,4 @@
+/* Header Status Badge Container - Integrated into YouTube Music top navigation bar */
 #ytm-lyrics-sync-badge {
   display: inline-flex;
   align-items: center;
@@ -23,12 +24,14 @@
   flex-shrink: 0;
 }
 
+/* Hover Interactive State - Elevates badge brightness and subtle elevation */
 #ytm-lyrics-sync-badge:hover {
   background: rgba(255, 255, 255, 0.16);
   border-color: rgba(255, 255, 255, 0.28);
   transform: translateY(-1px);
 }
 
+/* Active Click Feedback State */
 #ytm-lyrics-sync-badge:active {
   transform: translateY(0px);
   opacity: 0.85;
@@ -42,6 +45,7 @@ body > #ytm-lyrics-sync-badge {
   z-index: 999999;
 }
 
+/* Circular Status Indicator Dot (Green = Connected, Orange = Update Available, Red = Disconnected) */
 #ytm-lyrics-sync-badge .ytm-sync-dot {
   width: 7px;
   height: 7px;
