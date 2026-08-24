@@ -37,7 +37,7 @@ export const SettingsPage: React.FC = () => {
   /** UI Theme preference initialized from localStorage. */
   const [uiTheme, setUiTheme] = useState<UITheme>(() => {
     const saved = localStorage.getItem('ytm_ui_theme');
-    return saved === 'default' ? 'default' : 'liquid-glass';
+    return saved === 'liquid-glass' ? 'liquid-glass' : 'default';
   });
 
   /** Resolved translation dictionary object for current language mode. */

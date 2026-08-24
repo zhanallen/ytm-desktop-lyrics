@@ -94,7 +94,7 @@ const MainWidgetApp: React.FC = () => {
   /** UI Theme style preference ('default' for classic v1.2.0 glassmorphism, 'liquid-glass' for WebGL optical glass). */
   const [uiTheme, setUiTheme] = useState<UITheme>(() => {
     const saved = localStorage.getItem('ytm_ui_theme');
-    return saved === 'default' ? 'default' : 'liquid-glass';
+    return saved === 'liquid-glass' ? 'liquid-glass' : 'default';
   });
 
   /* Mutable References for Stable Subpixel Calculations and Async Event Guards */
