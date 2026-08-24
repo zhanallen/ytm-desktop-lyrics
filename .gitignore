@@ -6,6 +6,30 @@ dist/
 dist-ssr/
 src-tauri/target/
 
+# Tauri caches & metadata
+.tauri/
+src-tauri/.tauri/
+
+# TypeScript & build caches
+*.tsbuildinfo
+.tsbuildinfo
+
+# Cargo credentials & private configs
+.cargo/credentials
+.cargo/credentials.toml
+.cargo/config.toml
+
+# Native Executables, Installers & Binaries
+*.exe
+*.msi
+*.dmg
+*.deb
+*.rpm
+*.appimage
+*.dll
+*.so
+*.dylib
+
 # Browser profiles & Development scripts
 chrome_profile/
 .venv/
@@ -44,4 +68,17 @@ yarn-debug.log*
 
 # OS System Files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
 Thumbs.db
+ehthumbs.db
+desktop.ini
+*.lnk
+
+# Backup folders & archives
+backup/
+backups/
+*.bak
+

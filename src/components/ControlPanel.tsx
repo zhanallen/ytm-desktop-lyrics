@@ -5,7 +5,6 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Unlock, Eye, EyeOff, Settings, Play, Pause, SkipBack, SkipForward, Music } from 'lucide-react';
 import { LanguageMode, getTranslation } from '../i18n';
 
@@ -39,7 +38,7 @@ function isValidImageUrl(url: string): boolean {
  * Handles album artwork rendering with automatic network retry (up to 3 attempts),
  * progressive low-res fallback (=w120-h120) for weak network connections, and smooth placeholder handling.
  */
-const SmartAlbumCover: React.FC<{ albumArt: string; title: string }> = ({ albumArt, title }) => {
+const SmartAlbumCover: React.FC<{ albumArt: string; title: string }> = React.memo(({ albumArt, title }) => {
   const [imgSrc, setImgSrc] = useState<string>(albumArt);
   const [hasFailed, setHasFailed] = useState<boolean>(!isValidImageUrl(albumArt));
   const retryCountRef = useRef<number>(0);
@@ -71,7 +70,7 @@ const SmartAlbumCover: React.FC<{ albumArt: string; title: string }> = ({ albumA
    * Handles image load error:
    * Attempt 1 (1s): Retry original URL with cache-buster query parameter.
    * Attempt 2 (1s): Fallback from high-res (=w512-h512) to low-res (=w120-h120) for weak networks.
-   * Attempt 3 (1s): Retry low-res URL with cache-buster.
+   * Attempt 3 (1s): Retry low-res URL with timestamp parameter.
    * If all fail: Render fallback placeholder icon.
    */
   const handleError = () => {
@@ -111,8 +110,8 @@ const SmartAlbumCover: React.FC<{ albumArt: string; title: string }> = ({ albumA
 
   if (hasFailed || !imgSrc) {
     return (
-      <div className="album-cover-placeholder">
-        <Music size={24} />
+      <div className="album-cover-placeholder" aria-label="No Album Art" data-tauri-drag-region>
+        <Music size={24} data-tauri-drag-region />
       </div>
     );
   }
@@ -123,11 +122,13 @@ const SmartAlbumCover: React.FC<{ albumArt: string; title: string }> = ({ albumA
       alt={title}
       className="album-cover"
       onError={handleError}
+      draggable={false}
+      data-tauri-drag-region
     />
   );
-};
+});
 
-export const ControlPanel: React.FC<ControlPanelProps> = ({
+export const ControlPanel: React.FC<ControlPanelProps> = React.memo(({
   title,
   artist,
   albumArt,
@@ -151,37 +152,17 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   /** Formatted offset text for tooltip displays. */
   const numStr = Number(offset.toFixed(2)).toString();
   const formattedOffset = (offset >= 0 ? `+${numStr}` : numStr) + 's';
-
-  /**
-   * Initiates window dragging when user clicks on non-button areas of the control header bar.
-   */
-  const handleStartDrag = (e: React.MouseEvent) => {
-    const target = e.target as HTMLElement;
-    if (target.closest('button') || target.closest('.control-btn')) {
-      return;
-    }
-    e.preventDefault();
-    try {
-      const appWindow = getCurrentWindow();
-      appWindow.startDragging();
-    } catch (err) {
-      console.warn('Start dragging error:', err);
-    }
-  };
+  const isOffsetActive = Math.abs(offset) > 0.05;
 
   return (
-    <div
-      className="header-bar"
-      onMouseDown={handleStartDrag}
-      data-tauri-drag-region
-    >
+    <div className="header-bar" data-tauri-drag-region>
       {/* Left Column: 1:1 Square Album Cover with Auto-Retry */}
       <div className="mini-cover-col" data-tauri-drag-region>
         {albumArt ? (
           <SmartAlbumCover albumArt={albumArt} title={title} />
         ) : (
-          <div className="album-cover-placeholder">
-            <Music size={24} />
+          <div className="album-cover-placeholder" aria-label="No Album Art" data-tauri-drag-region>
+            <Music size={24} data-tauri-drag-region />
           </div>
         )}
       </div>
@@ -190,10 +171,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       <div className="mini-content-col" data-tauri-drag-region>
         {/* Track Title & Artist */}
         <div className="track-details" data-tauri-drag-region>
-          <span className="track-title" title={title}>
+          <span className="track-title" title={title} data-tauri-drag-region>
             {title || t.ytMusic}
           </span>
-          <span className="track-artist" title={artist}>
+          <span className="track-artist" title={artist} data-tauri-drag-region>
             {artist || t.notPlaying}
           </span>
         </div>
@@ -201,47 +182,69 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         {/* Single Row Controls: Playback Buttons + Utility Controls */}
         <div className="controls-single-row" data-tauri-drag-region>
           {/* Left: Playback Controls */}
-          <div className="playback-controls-group">
-            <div className="button-group">
-              <button className="control-btn playback-btn" onClick={onPrevious} title={t.prevSong}>
-                <SkipBack size={13} />
+          <div className="playback-controls-group" data-tauri-drag-region>
+            <div className="button-group" role="group" aria-label="Playback Controls" data-tauri-drag-region>
+              <button
+                className="control-btn playback-btn"
+                onClick={onPrevious}
+                title={t.prevSong}
+                aria-label={t.prevSong}
+              >
+                <SkipBack size={11} />
               </button>
-              <button className="control-btn playback-btn active" onClick={onPlayPause} title={isPaused ? t.play : t.pause}>
-                {isPaused ? <Play size={13} fill="currentColor" /> : <Pause size={13} fill="currentColor" />}
+              <button
+                className="control-btn playback-btn active"
+                onClick={onPlayPause}
+                title={isPaused ? t.play : t.pause}
+                aria-label={isPaused ? t.play : t.pause}
+                aria-pressed={!isPaused}
+              >
+                {isPaused ? <Play size={11} fill="currentColor" /> : <Pause size={11} fill="currentColor" />}
               </button>
-              <button className="control-btn playback-btn" onClick={onNext} title={t.nextSong}>
-                <SkipForward size={13} />
+              <button
+                className="control-btn playback-btn"
+                onClick={onNext}
+                title={t.nextSong}
+                aria-label={t.nextSong}
+              >
+                <SkipForward size={11} />
               </button>
             </div>
           </div>
 
           {/* Right: Utility Controls & Native Secondary Window Settings Trigger */}
-          <div className="utility-controls-group">
+          <div className="utility-controls-group" role="group" aria-label="Utility Controls" data-tauri-drag-region>
             <button
-              className="control-btn"
+              className={`control-btn ${isOffsetActive ? 'has-offset-active' : ''}`}
               onClick={onOpenSettingsWindow}
               title={`${t.openSettingsNative} (${formattedOffset})`}
+              aria-label={`${t.openSettingsNative} (${formattedOffset})`}
             >
-              <Settings size={12} />
+              <Settings size={11} />
+              {isOffsetActive && <span className="offset-indicator-dot" />}
             </button>
 
             <button
               className={`control-btn ${!showLyrics ? 'btn-subtle-muted' : ''}`}
               onClick={onToggleLyrics}
               title={showLyrics ? t.hideLyrics : t.showLyrics}
+              aria-label={showLyrics ? t.hideLyrics : t.showLyrics}
+              aria-pressed={showLyrics}
             >
-              {showLyrics ? <Eye size={12} /> : <EyeOff size={12} />}
+              {showLyrics ? <Eye size={11} /> : <EyeOff size={11} />}
             </button>
 
             <button
               className={`control-btn ${isClickThrough ? 'active lock-active-text' : ''}`}
               onClick={onToggleClickThrough}
               title={isClickThrough ? t.clickThroughActive : t.clickThroughInactive}
+              aria-label={isClickThrough ? t.clickThroughActive : t.clickThroughInactive}
+              aria-pressed={isClickThrough}
             >
               {isClickThrough ? (
                 <span className="lock-btn-text">Alt+L</span>
               ) : (
-                <Unlock size={12} />
+                <Unlock size={11} />
               )}
             </button>
           </div>
@@ -249,4 +252,4 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       </div>
     </div>
   );
-};
+});

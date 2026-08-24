@@ -22,18 +22,19 @@
   const userLang = (navigator.language || navigator.userLanguage || 'zh-TW').toLowerCase();
   const isEn = userLang.startsWith('en');
 
+  let launchAttempted = false;
+
   // Translation dictionary providing localized UI strings and interactive dialog prompts
   const t = {
     notConnected: isEn ? 'Not Connected (Click to Open)' : '尚未連線（點擊開啟桌面軟體）',
     connected: isEn ? 'Connected to Desktop App' : '已連線到桌面軟體',
+    connecting: isEn ? 'Connecting...' : '正在連線...',
+    downloadApp: isEn ? 'Desktop App Not Found (Click to Download)' : '未偵測到桌面軟體（點擊下載）',
     updateAvailable: (tag) => isEn ? `Connected (Update ${tag})` : `已連線 (可更新 ${tag})`,
     titleNotConnected: isEn ? 'Click to open YTM Desktop Lyrics' : '點擊即可自動開啟 YTM Desktop Lyrics 桌面軟體',
     titleConnected: isEn ? 'Connected to YTM Desktop Lyrics (Click to focus window)' : '已連線至桌面歌詞軟體 (點擊喚醒/聚焦視窗)',
     titleUpdate: (tag, cur) => isEn ? `New version ${tag} available (Current: v${cur})! Click to update` : `發現桌面軟體新版本 ${tag} (目前：v${cur})！點擊前往 GitHub 下載`,
-    confirmOpen: isEn ? 'Do you want to open YTM Desktop Lyrics?' : '要開啟桌面歌詞軟體嗎？',
-    confirmDownload: isEn ? 'Desktop app not connected. Would you like to visit the GitHub download page?' : '未連線到桌面軟體，要前往 GitHub 下載頁面嗎？',
-    confirmUpdateAuto: (tag) => isEn ? `YTM Desktop Lyrics new version available (${tag})\nWould you like to download the update?` : `YTM Desktop Lyrics 發現新版本 (${tag})\n是否前往下載更新？`,
-    confirmUpdateManual: (tag) => isEn ? `Desktop app update available (${tag})\nWould you like to download the update from GitHub?` : `桌面軟體有新版本 (${tag})\n是否前往 GitHub 下載更新？`
+    titleDownload: isEn ? 'Desktop app not connected. Click to visit the GitHub download page.' : '未連線到桌面軟體，點擊前往 GitHub 下載頁面',
   };
 
   /**
@@ -100,33 +101,21 @@
         updateDownloadUrl = htmlUrl;
 
         updateBadgeStatus(true);
-
-        const promptKey = 'ytm_update_prompted_' + latestTag;
-        if (!sessionStorage.getItem(promptKey)) {
-          sessionStorage.setItem(promptKey, 'true');
-          setTimeout(() => {
-            if (confirm(t.confirmUpdateAuto(latestTag))) {
-              window.open(htmlUrl, '_blank', 'noopener,noreferrer');
-            }
-          }, 800);
-        }
       }
     } catch (e) {}
   }
 
   /**
    * Event Handler: Processes click interactions on the header status badge.
-   * - If an update is available: prompts user to navigate to GitHub release download.
+   * - If an update is available: navigates directly to GitHub release download.
    * - If connected: sends focusWindow command over WebSocket to bring desktop app to front.
-   * - If disconnected: launches desktop app via hidden iframe (custom ytm-lyrics:// protocol), starts fast polling, and sets fallback download prompt.
+   * - If disconnected: launches desktop app via hidden iframe (custom ytm-lyrics:// protocol) and polls for connection.
    */
   function handleBadgeClick() {
     if (socket && socket.readyState === WebSocket.OPEN) {
       if (hasUpdateAvailable && latestVersionTag) {
-        if (confirm(t.confirmUpdateManual(latestVersionTag))) {
-          window.open(updateDownloadUrl || 'https://github.com/zhanallen/ytm-desktop-lyrics/releases/latest', '_blank', 'noopener,noreferrer');
-          return;
-        }
+        window.open(updateDownloadUrl || 'https://github.com/zhanallen/ytm-desktop-lyrics/releases/latest', '_blank', 'noopener,noreferrer');
+        return;
       }
       try {
         socket.send(JSON.stringify({ command: 'focusWindow' }));
@@ -134,40 +123,47 @@
       return;
     }
 
-    // Ask user to open the desktop app
-    if (confirm(t.confirmOpen)) {
-      // Launch desktop app via hidden iframe (avoids page navigation / "Leave site" warning)
-      try {
-        const iframe = document.createElement('iframe');
-        iframe.style.display = 'none';
-        iframe.src = 'ytm-lyrics://open';
-        (document.body || document.documentElement).appendChild(iframe);
-        setTimeout(() => {
-          try { iframe.remove(); } catch (e) {}
-        }, 2000);
-      } catch (e) {}
-
-      // Immediately attempt WebSocket connection and start fast polling while app launches
-      connectWebSocket();
-      const fastConnectTimer = setInterval(() => {
-        if (socket && socket.readyState === WebSocket.OPEN) {
-          clearInterval(fastConnectTimer);
-        } else {
-          connectWebSocket();
-        }
-      }, 300);
-
-      setTimeout(() => clearInterval(fastConnectTimer), 4000);
-
-      // Fallback: If still not connected after 4 seconds, prompt to download
-      setTimeout(() => {
-        if (!socket || socket.readyState !== WebSocket.OPEN) {
-          if (confirm(t.confirmDownload)) {
-            window.open('https://github.com/zhanallen/ytm-desktop-lyrics/releases', '_blank', 'noopener,noreferrer');
-          }
-        }
-      }, 4000);
+    if (launchAttempted && (!socket || socket.readyState !== WebSocket.OPEN)) {
+      window.open('https://github.com/zhanallen/ytm-desktop-lyrics/releases', '_blank', 'noopener,noreferrer');
+      launchAttempted = false;
+      return;
     }
+
+    launchAttempted = true;
+    updateBadgeStatus(false, t.connecting);
+
+    // Launch desktop app via hidden iframe (avoids page navigation / "Leave site" warning)
+    try {
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      iframe.src = 'ytm-lyrics://open';
+      (document.body || document.documentElement).appendChild(iframe);
+      setTimeout(() => {
+        try { iframe.remove(); } catch (e) {}
+      }, 2000);
+    } catch (e) {}
+
+    // Immediately attempt WebSocket connection and start fast polling while app launches
+    connectWebSocket();
+    const fastConnectTimer = setInterval(() => {
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        clearInterval(fastConnectTimer);
+      } else {
+        connectWebSocket();
+      }
+    }, 300);
+
+    setTimeout(() => clearInterval(fastConnectTimer), 4000);
+
+    // Fallback: If still not connected after 4 seconds, update badge to prompt download directly
+    setTimeout(() => {
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        updateBadgeStatus(false, t.downloadApp);
+        if (statusBadge) {
+          statusBadge.title = t.titleDownload;
+        }
+      }
+    }, 4000);
   }
 
   /**
@@ -182,6 +178,9 @@
       statusBadge = document.createElement('div');
       statusBadge.id = 'ytm-lyrics-sync-badge';
       statusBadge.title = t.titleNotConnected;
+      statusBadge.setAttribute('tabindex', '0');
+      statusBadge.setAttribute('role', 'button');
+      statusBadge.setAttribute('aria-label', t.titleNotConnected);
 
       const dotEl = document.createElement('div');
       dotEl.className = 'ytm-sync-dot';
@@ -193,6 +192,12 @@
       statusBadge.appendChild(dotEl);
       statusBadge.appendChild(textEl);
       statusBadge.addEventListener('click', handleBadgeClick);
+      statusBadge.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleBadgeClick();
+        }
+      });
     }
 
     // Attach to YouTube Music top right header navigation bar (next to account avatar)
@@ -229,13 +234,16 @@
     const dot = statusBadge.querySelector('.ytm-sync-dot');
     const label = statusBadge.querySelector('.ytm-sync-text');
     if (connected) {
+      launchAttempted = false;
       if (hasUpdateAvailable && latestVersionTag) {
         if (dot) {
           dot.style.background = '#FFA726';
           dot.style.boxShadow = '0 0 8px #FFA726';
         }
         if (label) label.textContent = t.updateAvailable(latestVersionTag);
-        statusBadge.title = t.titleUpdate(latestVersionTag, desktopAppVersion);
+        const titleStr = t.titleUpdate(latestVersionTag, desktopAppVersion);
+        statusBadge.title = titleStr;
+        statusBadge.setAttribute('aria-label', titleStr);
       } else {
         if (dot) {
           dot.style.background = '#4CAF50';
@@ -243,6 +251,7 @@
         }
         if (label) label.textContent = text || t.connected;
         statusBadge.title = t.titleConnected;
+        statusBadge.setAttribute('aria-label', t.titleConnected);
       }
     } else {
       if (dot) {
@@ -250,7 +259,9 @@
         dot.style.boxShadow = '0 0 8px #FF5252';
       }
       if (label) label.textContent = text || t.notConnected;
-      statusBadge.title = t.titleNotConnected;
+      const titleStr = text ? text : t.titleNotConnected;
+      statusBadge.title = titleStr;
+      statusBadge.setAttribute('aria-label', titleStr);
     }
   }
 
@@ -519,14 +530,33 @@
     };
   }
 
+  let lastSentData = null;
+  let lastSentTime = 0;
+
   function sendUpdate() {
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
 
     const data = extractTrackData();
     if (!data || !data.title) return;
 
+    const now = Date.now();
+    // If paused and track/time haven't changed, throttle transmission to once every 1000ms
+    if (
+      data.isPaused &&
+      lastSentData &&
+      lastSentData.isPaused &&
+      lastSentData.title === data.title &&
+      lastSentData.artist === data.artist &&
+      Math.abs(lastSentData.currentTime - data.currentTime) < 0.05 &&
+      now - lastSentTime < 1000
+    ) {
+      return;
+    }
+
     try {
       socket.send(JSON.stringify(data));
+      lastSentData = data;
+      lastSentTime = now;
     } catch (e) {}
   }
 

@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "ytm-desktop-lyrics",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "identifier": "com.ytm.desktoplyrics",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -33,7 +33,7 @@
         "label": "settings",
         "title": "偏好設定 - YT Music Lyrics",
         "width": 360,
-        "height": 420,
+        "height": 480,
         "resizable": false,
         "maximizable": false,
         "decorations": true,

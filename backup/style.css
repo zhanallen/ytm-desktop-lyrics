@@ -184,6 +184,28 @@ html, body {
   overflow: hidden;
 }
 
+.settings-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 16px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.settings-modal-backdrop.open {
+  display: flex;
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .playback-controls-group .control-btn.playback-btn {
   aspect-ratio: 1 / 1;
   width: clamp(18px, 3.2vw, 36px);

@@ -19,6 +19,13 @@
   padding: 0;
   user-select: none;
   -webkit-user-select: none;
+  -webkit-user-drag: none;
+  user-drag: none;
+}
+
+img, svg {
+  -webkit-user-drag: none;
+  user-drag: none;
 }
 
 html, body, #root {
@@ -30,24 +37,52 @@ html, body, #root {
   color: #FFFFFF;
 }
 
-/* Glassmorphism Widget Container with Hardware Clip-Path */
+/* Glassmorphism Widget Container */
 .widget-container {
   width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--bg-glass);
-  backdrop-filter: blur(22px);
-  -webkit-backdrop-filter: blur(22px);
-  border: 1px solid var(--border-glass);
-  border-radius: 14px;
-  clip-path: inset(0 round 14px);
-  -webkit-clip-path: inset(0 round 14px);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
-  transition: background 0.3s ease, border-color 0.3s ease;
   position: relative;
   overflow: hidden;
   box-sizing: border-box;
+}
+
+/* Style 1: Default (Classic v1.2.0 Glassmorphism) */
+.widget-container.theme-default {
+  background: var(--bg-glass) !important;
+  backdrop-filter: blur(22px) !important;
+  -webkit-backdrop-filter: blur(22px) !important;
+  border: 1px solid var(--border-glass) !important;
+  border-radius: 14px !important;
+  clip-path: inset(0 round 14px);
+  -webkit-clip-path: inset(0 round 14px);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.widget-container.theme-default .header-bar {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.widget-container.theme-liquid-glass.is-clickthrough,
+.widget-container.theme-liquid-glass.click-through {
+  opacity: 0.55 !important;
+  pointer-events: none !important;
+  transition: opacity 0.3s ease;
+}
+
+.widget-container.theme-default.is-clickthrough,
+.widget-container.theme-default.click-through {
+  background: var(--bg-glass-clickthrough) !important;
+  backdrop-filter: blur(12px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(12px) saturate(140%) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
+  opacity: 0.55 !important;
+  pointer-events: none !important;
+  transition: opacity 0.3s ease, background 0.3s ease, backdrop-filter 0.3s ease;
 }
 
 /* Unrestricted Free Resizing Layout when lyrics are hidden */
@@ -57,34 +92,18 @@ html, body, #root {
   max-height: none !important;
 }
 
-.widget-container.is-clickthrough,
-.widget-container.click-through {
-  background: var(--bg-glass-clickthrough) !important;
-  backdrop-filter: blur(12px) saturate(140%) !important;
-  -webkit-backdrop-filter: blur(12px) saturate(140%) !important;
-  border-color: rgba(255, 255, 255, 0.08) !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
-  opacity: 0.62;
-  transition: opacity 0.3s ease, background 0.3s ease, backdrop-filter 0.3s ease;
-}
-
-.widget-container.is-clickthrough:hover,
-.widget-container.click-through:hover {
-  opacity: 0.95;
-}
-
 /* Compact Control Header Bar - Restored Original Layout */
 .header-bar {
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(0, 0, 0, 0.18);
+  gap: 8px;
+  padding: 6px 10px;
   flex-shrink: 0;
   width: 100%;
   box-sizing: border-box;
+  position: relative;
+  z-index: 2;
 }
 
 .mini-cover-col {
@@ -102,7 +121,7 @@ html, body, #root {
   flex: 1 1 0%;
   min-width: 0;
   height: var(--player-left-col-width);
-  padding: 2px 0;
+  padding: 1px 0;
   box-sizing: border-box;
 }
 
@@ -110,7 +129,7 @@ html, body, #root {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 2px;
+  gap: 1px;
   min-width: 0;
   width: 100%;
   margin-top: auto;
@@ -121,7 +140,7 @@ html, body, #root {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
+  gap: 4px;
   width: 100%;
   min-width: 0;
   flex-shrink: 0;
@@ -159,33 +178,38 @@ html, body, #root {
   color: var(--text-muted);
 }
 
+.album-cover-placeholder svg {
+  width: clamp(20px, 35%, 48px);
+  height: clamp(20px, 35%, 48px);
+}
+
 /* Enhanced High-Impact Dynamic Track Title & Artist Scaling */
 .track-title {
-  font-size: clamp(13px, 2.5vw + 4px, 28px);
+  font-size: clamp(12px, 2.2vw + 3px, 26px);
   font-weight: 800;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   color: #FFFFFF;
-  line-height: 1.25;
+  line-height: 1.2;
   letter-spacing: -0.2px;
 }
 
 .track-artist {
-  font-size: clamp(11px, 1.4vw + 4px, 18px);
+  font-size: clamp(10px, 1.2vw + 3px, 16px);
   font-weight: 500;
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 1.25;
-  margin-top: 2px;
+  line-height: 1.2;
+  margin-top: 1px;
 }
 
 .playback-controls-group {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   flex-shrink: 0;
 }
 
@@ -195,20 +219,22 @@ html, body, #root {
   align-items: center;
   justify-content: space-between;
   gap: 2px;
-  padding: 2px 3px;
+  padding: 1px 2px;
   overflow: hidden;
 }
 
 .playback-controls-group .control-btn.playback-btn {
   aspect-ratio: 1 / 1;
-  width: clamp(18px, 3.2vw, 36px);
-  height: clamp(18px, 3.2vw, 36px);
+  min-width: 20px;
+  min-height: 20px;
+  width: clamp(20px, 2.6vw, 30px);
+  height: clamp(20px, 2.6vw, 30px);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
-  border-radius: 6px;
-  font-size: clamp(10px, 1.2vw + 2px, 14px);
+  border-radius: 5px;
+  font-size: clamp(9px, 1vw + 2px, 12px);
   flex: 0 0 auto;
 }
 
@@ -225,18 +251,21 @@ html, body, #root {
   gap: 2px;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 7px;
-  padding: 2px;
+  border-radius: 6px;
+  padding: 1px 2px;
   flex-shrink: 0;
 }
 
 .control-btn {
+  min-width: 20px;
+  min-height: 20px;
+  height: 22px;
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.12);
   color: #E2E8F0;
   border-radius: 5px;
-  padding: clamp(2px, 0.4vw, 5px) clamp(3px, 0.6vw, 8px);
-  font-size: clamp(9px, 0.8vw + 4px, 13px);
+  padding: 0 clamp(3px, 0.5vw, 6px);
+  font-size: clamp(9px, 0.8vw + 3px, 12px);
   font-weight: 600;
   display: inline-flex;
   align-items: center;
@@ -249,21 +278,28 @@ html, body, #root {
 }
 
 .control-btn svg {
-  width: clamp(11px, 1.6vw, 18px);
-  height: clamp(11px, 1.6vw, 18px);
+  width: clamp(10px, 1.4vw, 15px);
+  height: clamp(10px, 1.4vw, 15px);
   flex-shrink: 0;
+  pointer-events: none !important;
 }
 
 .playback-controls-group .control-btn.playback-btn svg {
-  width: clamp(12px, 2vw, 20px);
-  height: clamp(12px, 2vw, 20px);
+  width: clamp(11px, 1.6vw, 16px);
+  height: clamp(11px, 1.6vw, 16px);
   flex-shrink: 0;
+  pointer-events: none !important;
 }
 
 .control-btn:hover {
   background: rgba(255, 255, 255, 0.24);
   color: #FFFFFF;
   border-color: rgba(255, 255, 255, 0.35);
+}
+
+.control-btn:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 1px;
 }
 
 .control-btn:active {
@@ -279,7 +315,7 @@ html, body, #root {
 
 .control-btn.btn-subtle-muted {
   background: rgba(255, 255, 255, 0.05) !important;
-  color: rgba(255, 255, 255, 0.38) !important;
+  color: rgba(255, 255, 255, 0.65) !important;
   border-color: rgba(255, 255, 255, 0.08) !important;
   opacity: 0.75;
 }
@@ -291,18 +327,36 @@ html, body, #root {
   opacity: 1;
 }
 
+.control-btn.has-offset-active {
+  position: relative;
+}
+
+.offset-indicator-dot {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent-cyan, #00f2fe);
+  box-shadow: 0 0 4px var(--accent-cyan, #00f2fe);
+  pointer-events: none;
+}
+
 .control-btn.lock-active-text {
   background: rgba(0, 242, 254, 0.18) !important;
   border: 1px solid rgba(0, 242, 254, 0.5) !important;
   color: var(--accent-cyan, #00f2fe) !important;
   box-shadow: 0 0 10px rgba(0, 242, 254, 0.35);
-  padding: 2px 5px !important;
+  padding: 1px 4px !important;
+  min-width: 20px;
+  height: 22px;
 }
 
 .lock-btn-text {
-  font-size: clamp(9px, 0.7vw + 3px, 11px);
+  font-size: clamp(8px, 0.6vw + 3px, 10px);
   font-weight: 700;
-  letter-spacing: 0.4px;
+  letter-spacing: 0.3px;
   color: var(--accent-cyan, #00f2fe);
   line-height: 1;
 }
@@ -354,7 +408,7 @@ html, body, #root {
   padding: 16px 14px 20px 14px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   width: 100%;
   box-sizing: border-box;
 }
@@ -494,6 +548,7 @@ html, body, #root {
 .lyrics-canvas {
   flex: 1 1 auto;
   position: relative;
+  z-index: 2;
   overflow: hidden;
   width: 100%;
   height: 100%;
@@ -516,6 +571,10 @@ html, body, #root {
   transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+.lyrics-wrapper.is-manual-scrolling {
+  transition: none !important;
+}
+
 /* Dynamic Responsive Lyric Line Font Size */
 .ytm-lyric-line {
   width: 100%;
@@ -526,7 +585,6 @@ html, body, #root {
   line-height: 1.45;
   font-size: clamp(14px, 1.8vw + 8px, 24px);
   border-radius: 8px;
-  will-change: transform, opacity;
   transform-origin: center center;
   transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1),
               opacity 0.4s cubic-bezier(0.22, 1, 0.36, 1),
@@ -537,8 +595,9 @@ html, body, #root {
 .ytm-lyric-line.future {
   font-weight: 500;
   color: var(--text-muted);
-  opacity: 0.42;
+  opacity: 0.72;
   transform: scale(0.94);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
 .ytm-lyric-line.active {

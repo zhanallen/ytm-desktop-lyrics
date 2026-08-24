@@ -6,8 +6,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { emit, listen } from '@tauri-apps/api/event';
-import { RotateCcw, Clock, Keyboard, MousePointer, Globe } from 'lucide-react';
+import { RotateCcw, Clock, Keyboard, MousePointer, Globe, Sparkles } from 'lucide-react';
 import { LanguageMode, getTranslation } from '../i18n';
+
+export type UITheme = 'default' | 'liquid-glass';
 
 export const SettingsPage: React.FC = () => {
   /** Local offset state initialized from localStorage with fallback to 0. */
@@ -32,6 +34,12 @@ export const SettingsPage: React.FC = () => {
     return saved === 'zh-TW' || saved === 'en' || saved === 'system' ? (saved as LanguageMode) : 'system';
   });
 
+  /** UI Theme preference initialized from localStorage. */
+  const [uiTheme, setUiTheme] = useState<UITheme>(() => {
+    const saved = localStorage.getItem('ytm_ui_theme');
+    return saved === 'default' ? 'default' : 'liquid-glass';
+  });
+
   /** Resolved translation dictionary object for current language mode. */
   const t = getTranslation(languageMode);
 
@@ -49,6 +57,7 @@ export const SettingsPage: React.FC = () => {
         isClickThrough: boolean;
         showLyrics: boolean;
         languageMode?: LanguageMode;
+        uiTheme?: UITheme;
       }>('sync-settings-state', (event) => {
         if (!isMounted || !event.payload) return;
         setOffset(event.payload.offset);
@@ -56,6 +65,9 @@ export const SettingsPage: React.FC = () => {
         setShowLyrics(event.payload.showLyrics);
         if (event.payload.languageMode) {
           setLanguageMode(event.payload.languageMode);
+        }
+        if (event.payload.uiTheme) {
+          setUiTheme(event.payload.uiTheme);
         }
       });
       if (isMounted) unlistens.push(u1); else u1();
@@ -105,6 +117,13 @@ export const SettingsPage: React.FC = () => {
     setLanguageMode(mode);
     localStorage.setItem('ytm_lang', mode);
     emit('change-language-cmd', mode);
+  };
+
+  /** Updates UI theme mode, saves to localStorage, and broadcasts to main window. */
+  const handleUiThemeChange = (theme: UITheme) => {
+    setUiTheme(theme);
+    localStorage.setItem('ytm_ui_theme', theme);
+    emit('change-ui-theme-cmd', theme);
   };
 
   /** Formats offset number into readable string representation (e.g. +0.5s or -0.2s). */
@@ -163,7 +182,30 @@ export const SettingsPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Section 3: Language Settings */}
+          {/* Section 3: UI Theme / Style */}
+          <div className="settings-section">
+            <div className="settings-section-label">
+              <Sparkles size={13} className="section-icon" />
+              <span>{t.uiStyleTitle}</span>
+            </div>
+            <div className="settings-toggle-row">
+              <button
+                className={`control-btn modal-toggle-btn ${uiTheme === 'default' ? 'active' : ''}`}
+                onClick={() => handleUiThemeChange('default')}
+              >
+                <span>{t.uiStyleDefault}</span>
+              </button>
+
+              <button
+                className={`control-btn modal-toggle-btn ${uiTheme === 'liquid-glass' ? 'active' : ''}`}
+                onClick={() => handleUiThemeChange('liquid-glass')}
+              >
+                <span>{t.uiStyleGlass}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Section 4: Language Settings */}
           <div className="settings-section">
             <div className="settings-section-label">
               <Globe size={13} className="section-icon" />
@@ -193,7 +235,7 @@ export const SettingsPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Section 4: Hotkeys Hint */}
+          {/* Section 5: Hotkeys Hint */}
           <div className="settings-section">
             <div className="settings-section-label">
               <Keyboard size={13} className="section-icon" />

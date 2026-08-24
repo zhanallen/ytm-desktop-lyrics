@@ -5,15 +5,20 @@
  * persistent localStorage state retention, and cross-window settings broadcasting.
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, emit } from '@tauri-apps/api/event';
 import { parseLrc, getActiveLyricIndex, LyricLine } from './utils/lrcParser';
 import { fetchLyrics } from './services/lrclib';
 import { ControlPanel } from './components/ControlPanel';
 import { LyricsViewer } from './components/LyricsViewer';
-import { SettingsPage } from './components/SettingsPage';
+import type { UITheme } from './components/SettingsPage';
+import { LiquidGlassCanvas } from './components/LiquidGlassCanvas';
 import { LanguageMode, detectLanguage } from './i18n';
+
+const SettingsPage = React.lazy(() =>
+  import('./components/SettingsPage').then((m) => ({ default: m.SettingsPage }))
+);
 
 /** Interface defining YouTube Music track data payload received via IPC / WebSocket. */
 interface TrackPayload {
@@ -39,7 +44,11 @@ export const App: React.FC = () => {
     window.location.hash.includes('settings');
 
   if (isSettingsRoute) {
-    return <SettingsPage />;
+    return (
+      <Suspense fallback={null}>
+        <SettingsPage />
+      </Suspense>
+    );
   }
 
   return <MainWidgetApp />;
@@ -51,10 +60,10 @@ export const App: React.FC = () => {
  * lyrics display collapse state, and language preference.
  */
 const MainWidgetApp: React.FC = () => {
-  /** Active playing track metadata. */
+  /** Active playing track metadata (defaults to null before connection). */
   const [track, setTrack] = useState<TrackPayload | null>(null);
 
-  /** Parsed LRC lyric lines array. */
+  /** Parsed LRC lyric lines array (defaults to empty array before connection). */
   const [lyrics, setLyrics] = useState<LyricLine[]>([]);
 
   /** Loading indicator state for LRCLIB API fetching. */
@@ -82,6 +91,12 @@ const MainWidgetApp: React.FC = () => {
     return saved === 'zh-TW' || saved === 'en' || saved === 'system' ? (saved as LanguageMode) : 'system';
   });
 
+  /** UI Theme style preference ('default' for classic v1.2.0 glassmorphism, 'liquid-glass' for WebGL optical glass). */
+  const [uiTheme, setUiTheme] = useState<UITheme>(() => {
+    const saved = localStorage.getItem('ytm_ui_theme');
+    return saved === 'default' ? 'default' : 'liquid-glass';
+  });
+
   /* Mutable References for Stable Subpixel Calculations and Async Event Guards */
   const currentSongRef = useRef<string>('');
   const latestTrackRef = useRef<TrackPayload | null>(null);
@@ -89,12 +104,10 @@ const MainWidgetApp: React.FC = () => {
   const showLyricsRef = useRef<boolean>(true);
   const offsetRef = useRef<number>(0);
   const languageModeRef = useRef<LanguageMode>('system');
+  const uiThemeRef = useRef<UITheme>('default');
   
   /** Real-time memory for expanded window physical height (default 560px), stored using Math.floor. */
   const savedExpandedHeightRef = useRef<number>(560);
-
-  /** WebSocket connection handle for direct browser extension messaging. */
-  const wsRef = useRef<WebSocket | null>(null);
 
   /** Keep click-through ref in sync with state. */
   useEffect(() => {
@@ -105,6 +118,13 @@ const MainWidgetApp: React.FC = () => {
   useEffect(() => {
     showLyricsRef.current = showLyrics;
   }, [showLyrics]);
+
+  /** Keep UI theme ref in sync with state. */
+  useEffect(() => {
+    uiThemeRef.current = uiTheme;
+    localStorage.setItem('ytm_ui_theme', uiTheme);
+    broadcastStateToSettings();
+  }, [uiTheme]);
 
   /**
    * Persists offset changes to localStorage and broadcasts updated state to settings window.
@@ -136,11 +156,15 @@ const MainWidgetApp: React.FC = () => {
       ? (storedLang as LanguageMode)
       : languageModeRef.current || 'system';
 
+    const storedTheme = localStorage.getItem('ytm_ui_theme');
+    const activeTheme = storedTheme === 'liquid-glass' ? 'liquid-glass' : 'default';
+
     emit('sync-settings-state', {
       offset: offsetRef.current,
       isClickThrough: isClickThroughRef.current,
       showLyrics: showLyricsRef.current,
       languageMode: activeMode,
+      uiTheme: activeTheme,
     });
   };
 
@@ -207,24 +231,20 @@ const MainWidgetApp: React.FC = () => {
   }, [showLyrics, track?.title]);
 
   /**
-   * Dispatches playback control commands (playPause, next, previous) via Tauri command or WebSocket fallback.
+   * Dispatches playback control commands (playPause, next, previous) via Tauri command.
    */
-  const sendPlayerCommand = async (cmd: 'playPause' | 'next' | 'previous') => {
+  const sendPlayerCommand = useCallback(async (cmd: 'playPause' | 'next' | 'previous') => {
     try {
       await invoke('send_player_command', { command: cmd });
     } catch (err) {
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        try {
-          wsRef.current.send(JSON.stringify({ command: cmd }));
-        } catch (e) {}
-      }
+      console.warn('send_player_command error:', err);
     }
-  };
+  }, []);
 
   /**
    * Toggles lyrics display visibility with 0-frame flickering prevention and Math.floor subpixel stability.
    */
-  const handleToggleLyrics = async () => {
+  const handleToggleLyrics = useCallback(async () => {
     const nextShowLyrics = !showLyricsRef.current;
 
     try {
@@ -272,13 +292,13 @@ const MainWidgetApp: React.FC = () => {
     } catch (err) {
       console.warn('Physical window resize on toggle lyrics error:', err);
     }
-  };
+  }, []);
 
   /**
    * Processes incoming YouTube Music track metadata payload.
    * Triggers LRCLIB API search when song changes and parses returned LRC format synced lyrics.
    */
-  const handleUpdatePayload = async (payload: TrackPayload) => {
+  const handleUpdatePayload = useCallback(async (payload: TrackPayload) => {
     if (!payload || !payload.title) return;
 
     latestTrackRef.current = payload;
@@ -307,12 +327,17 @@ const MainWidgetApp: React.FC = () => {
     } else {
       setTrack(payload);
     }
-  };
+  }, []);
 
   /** Toggles mouse cursor click-through mode. */
-  const toggleClickThrough = async (targetState?: boolean) => {
+  const toggleClickThrough = useCallback(async (targetState?: boolean) => {
     const nextState = targetState !== undefined ? targetState : !isClickThroughRef.current;
     setIsClickThrough(nextState);
+    isClickThroughRef.current = nextState;
+
+    if (document.activeElement && (document.activeElement as HTMLElement).blur) {
+      (document.activeElement as HTMLElement).blur();
+    }
 
     try {
       await invoke('set_ignore_cursor_events', { ignore: nextState });
@@ -320,19 +345,19 @@ const MainWidgetApp: React.FC = () => {
     } catch (err) {
       console.warn('Click-through invoke warning:', err);
     }
-  };
+  }, []);
 
   /** Opens or focuses the native secondary settings window. */
-  const handleOpenSettingsWindow = async () => {
+  const handleOpenSettingsWindow = useCallback(async () => {
     try {
       await invoke('open_settings_window');
     } catch (err) {
       console.warn('Open settings window error:', err);
     }
-  };
+  }, []);
 
   /**
-   * Lifecycle Effect Hook for registering Tauri IPC event listeners and WebSocket server connection.
+   * Lifecycle Effect Hook for registering Tauri IPC event listeners.
    * Includes strict isMounted lifecycle guards and unlisten cleanup array to guarantee zero duplicate listeners.
    */
   useEffect(() => {
@@ -370,11 +395,13 @@ const MainWidgetApp: React.FC = () => {
 
         const u5 = await listen<number>('change-offset-delta', (event) => {
           if (!isMounted) return;
-          setOffset((prev) => {
-            const next = Math.round((prev + event.payload) * 10) / 10;
-            localStorage.setItem('ytm_offset', next.toString());
-            return next;
-          });
+          if (typeof event.payload === 'number' && Number.isFinite(event.payload)) {
+            setOffset((prev) => {
+              const next = Math.round((prev + event.payload) * 10) / 10;
+              localStorage.setItem('ytm_offset', next.toString());
+              return next;
+            });
+          }
         });
         if (isMounted) unlistens.push(u5); else u5();
 
@@ -407,64 +434,56 @@ const MainWidgetApp: React.FC = () => {
           }
         });
         if (isMounted) unlistens.push(u9); else u9();
+
+        const u10 = await listen<UITheme>('change-ui-theme-cmd', (event) => {
+          if (!isMounted) return;
+          if (event.payload === 'default' || event.payload === 'liquid-glass') {
+            setUiTheme(event.payload);
+            localStorage.setItem('ytm_ui_theme', event.payload);
+          }
+        });
+        if (isMounted) unlistens.push(u10); else u10();
       } catch (e) {}
     };
 
-    const connectDirectWs = () => {
-      try {
-        const ws = new WebSocket('ws://127.0.0.1:27890?token=ytm_sync_sec_8f9a2b7c4d5e');
-        wsRef.current = ws;
-
-        ws.onmessage = (msg) => {
-          if (!isMounted) return;
-          try {
-            const data = JSON.parse(msg.data);
-            if (data.title) {
-              handleUpdatePayload(data);
-            }
-          } catch (err) {}
-        };
-        ws.onclose = () => {
-          if (isMounted) setTimeout(connectDirectWs, 2000);
-        };
-      } catch (err) {
-        if (isMounted) setTimeout(connectDirectWs, 2000);
-      }
-    };
-
     setupTauriListeners();
-    connectDirectWs();
 
     return () => {
       isMounted = false;
       unlistens.forEach((unlisten) => unlisten());
-      if (wsRef.current) wsRef.current.close();
     };
-  }, []);
+  }, [handleUpdatePayload, toggleClickThrough, handleToggleLyrics]);
 
   /** Adjusts offset by delta and persists to localStorage. */
-  const handleOffsetChange = (delta: number) => {
+  const handleOffsetChange = useCallback((delta: number) => {
     setOffset((prev) => {
       const next = Math.round((prev + delta) * 10) / 10;
       localStorage.setItem('ytm_offset', next.toString());
       return next;
     });
-  };
+  }, []);
 
   /** Resets offset to 0 and persists to localStorage. */
-  const handleOffsetReset = () => {
+  const handleOffsetReset = useCallback(() => {
     setOffset(0);
     localStorage.setItem('ytm_offset', '0');
-  };
+  }, []);
+
+  const handlePlayPause = useCallback(() => sendPlayerCommand('playPause'), [sendPlayerCommand]);
+  const handleNext = useCallback(() => sendPlayerCommand('next'), [sendPlayerCommand]);
+  const handlePrevious = useCallback(() => sendPlayerCommand('previous'), [sendPlayerCommand]);
+  const handleToggleClickThrough = useCallback(() => toggleClickThrough(), [toggleClickThrough]);
 
   /** Computes index of currently highlighted lyric line based on track playback time and sync offset. */
   const activeIndex = getActiveLyricIndex(lyrics, track?.currentTime || 0, offset);
 
   return (
     <div
-      className={`widget-container ${!showLyrics ? 'lyrics-hidden' : ''} ${isClickThrough ? 'is-clickthrough' : ''}`}
+      className={`widget-container theme-${uiTheme} ${!showLyrics ? 'lyrics-hidden' : ''} ${isClickThrough ? 'is-clickthrough' : ''}`}
       data-tauri-drag-region
     >
+      {uiTheme === 'liquid-glass' && <LiquidGlassCanvas albumArtUrl={track?.albumArt} />}
+
       <ControlPanel
         title={track?.title || ''}
         artist={track?.artist || ''}
@@ -475,13 +494,13 @@ const MainWidgetApp: React.FC = () => {
         onOffsetChange={handleOffsetChange}
         onOffsetReset={handleOffsetReset}
         isClickThrough={isClickThrough}
-        onToggleClickThrough={() => toggleClickThrough()}
+        onToggleClickThrough={handleToggleClickThrough}
         showLyrics={showLyrics}
         onToggleLyrics={handleToggleLyrics}
         onOpenSettingsWindow={handleOpenSettingsWindow}
-        onPlayPause={() => sendPlayerCommand('playPause')}
-        onNext={() => sendPlayerCommand('next')}
-        onPrevious={() => sendPlayerCommand('previous')}
+        onPlayPause={handlePlayPause}
+        onNext={handleNext}
+        onPrevious={handlePrevious}
       />
 
       {showLyrics && (

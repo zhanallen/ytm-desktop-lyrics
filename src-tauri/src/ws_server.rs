@@ -1,9 +1,9 @@
 use futures_util::{SinkExt, StreamExt};
 use std::net::SocketAddr;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::net::TcpListener;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, Semaphore};
 use tokio_tungstenite::accept_hdr_async;
 use tokio_tungstenite::tungstenite::handshake::server::{ErrorResponse, Request, Response};
 use tokio_tungstenite::tungstenite::http::StatusCode;
@@ -35,39 +35,57 @@ pub async fn start_ws_server(app_handle: AppHandle) {
     let (tx, _) = broadcast::channel::<String>(100);
     let _ = BROADCAST_TX.set(tx.clone());
 
+    // Semaphore limiting concurrent WebSocket connections to a maximum of 5
+    let connection_limiter = Arc::new(Semaphore::new(5));
+
     while let Ok((stream, _)) = listener.accept().await {
+        let permit = match connection_limiter.clone().try_acquire_owned() {
+            Ok(p) => p,
+            Err(_) => {
+                eprintln!("[Rust WS Server] Max concurrent connections (5) reached. Dropping new connection.");
+                continue;
+            }
+        };
+
         let handle = app_handle.clone();
         let mut rx = tx.subscribe();
 
         tokio::spawn(async move {
-            let callback = |req: &Request, response: Response| -> Result<Response, ErrorResponse> {
-                // 1. Origin Header Validation
-                if let Some(origin_val) = req.headers().get("Origin") {
-                    if let Ok(origin_str) = origin_val.to_str() {
-                        let is_allowed = origin_str == "https://music.youtube.com"
-                            || origin_str.starts_with("chrome-extension://")
-                            || origin_str.starts_with("http://127.0.0.1")
-                            || origin_str.starts_with("http://localhost")
-                            || origin_str.starts_with("ws://127.0.0.1")
-                            || origin_str.starts_with("ws://localhost");
+            let _permit = permit;
 
-                        if !is_allowed {
-                            eprintln!("[Rust WS Server] Rejected untrusted Origin: {}", origin_str);
-                            let err_resp = Response::builder()
-                                .status(StatusCode::FORBIDDEN)
-                                .body(Some("Forbidden: Untrusted Origin".to_string()))
-                                .unwrap();
-                            return Err(err_resp);
-                        }
+            let callback = |req: &Request, response: Response| -> Result<Response, ErrorResponse> {
+                // 1. Strict Origin Validation (Default Deny)
+                let is_allowed_origin = match req.headers().get("Origin").and_then(|v| v.to_str().ok()) {
+                    Some(origin_str) => {
+                        origin_str == "https://music.youtube.com"
+                            || origin_str.starts_with("chrome-extension://")
+                            || origin_str == "http://127.0.0.1:14280"
+                            || origin_str == "http://localhost:14280"
+                            || origin_str == "http://127.0.0.1:27890"
+                            || origin_str == "http://localhost:27890"
+                            || origin_str == "tauri://localhost"
                     }
+                    None => false, // Reject connections with missing Origin header (protects against unauthorized local scripts)
+                };
+
+                if !is_allowed_origin {
+                    eprintln!("[Rust WS Server] Rejected untrusted or missing Origin");
+                    let err_resp = Response::builder()
+                        .status(StatusCode::FORBIDDEN)
+                        .body(Some("Forbidden: Untrusted Origin".to_string()))
+                        .unwrap();
+                    return Err(err_resp);
                 }
 
-                // 2. Auth Token Validation
+                // 2. Auth Token Validation (Key=Value matching or Header)
                 let query = req.uri().query().unwrap_or("");
-                let token_header = req.headers().get("X-YTM-Token").and_then(|v| v.to_str().ok()).unwrap_or("");
-                let has_token = query.contains(&format!("token={}", WS_AUTH_TOKEN)) || token_header == WS_AUTH_TOKEN;
+                let token_in_query = query.split('&').any(|pair| {
+                    let mut parts = pair.split('=');
+                    parts.next() == Some("token") && parts.next() == Some(WS_AUTH_TOKEN)
+                });
+                let token_in_header = req.headers().get("X-YTM-Token").and_then(|v| v.to_str().ok()) == Some(WS_AUTH_TOKEN);
 
-                if !has_token {
+                if !token_in_query && !token_in_header {
                     eprintln!("[Rust WS Server] Rejected connection: Missing or invalid Auth Token");
                     let err_resp = Response::builder()
                         .status(StatusCode::UNAUTHORIZED)
@@ -89,12 +107,24 @@ pub async fn start_ws_server(app_handle: AppHandle) {
                 }).to_string();
                 let _ = write.send(tokio_tungstenite::tungstenite::Message::Text(hello_info.into())).await;
 
+                let mut last_msg_time = tokio::time::Instant::now() - tokio::time::Duration::from_millis(30);
+
                 loop {
                     tokio::select! {
-                        Some(msg_result) = read.next() => {
+                        msg_result = read.next() => {
                             match msg_result {
-                                Ok(msg) => {
+                                Some(Ok(msg)) => {
+                                    if msg.is_close() {
+                                        break;
+                                    }
                                     if msg.is_text() || msg.is_binary() {
+                                        // Inbound message rate limiting (30ms interval between processed incoming messages)
+                                        let now = tokio::time::Instant::now();
+                                        if now.duration_since(last_msg_time) < tokio::time::Duration::from_millis(30) {
+                                            continue;
+                                        }
+                                        last_msg_time = now;
+
                                         let text = msg.to_text().unwrap_or("");
                                         if !text.is_empty() && text.len() <= 65536 {
                                             // Focus Command Handler: Precise JSON command check to prevent song titles from triggering window focus
@@ -112,12 +142,25 @@ pub async fn start_ws_server(app_handle: AppHandle) {
                                         }
                                     }
                                 }
-                                Err(_) => break,
+                                Some(Err(_)) | None => {
+                                    // Cleanly exit task loop on socket termination or error
+                                    break;
+                                }
                             }
                         }
-                        Ok(bmsg) = rx.recv() => {
-                            if write.send(tokio_tungstenite::tungstenite::Message::Text(bmsg.into())).await.is_err() {
-                                break;
+                        recv_res = rx.recv() => {
+                            match recv_res {
+                                Ok(bmsg) => {
+                                    if write.send(tokio_tungstenite::tungstenite::Message::Text(bmsg.into())).await.is_err() {
+                                        break;
+                                    }
+                                }
+                                Err(broadcast::error::RecvError::Lagged(_)) => {
+                                    continue;
+                                }
+                                Err(broadcast::error::RecvError::Closed) => {
+                                    break;
+                                }
                             }
                         }
                     }

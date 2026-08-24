@@ -1,4 +1,4 @@
-import { toTraditional, toSimplified, countTraditionalFeatures } from '../utils/chineseConverter';
+import { toTraditional, toSimplified, countTraditionalFeatures, ensureChineseConverter } from '../utils/chineseConverter';
 
 export interface LrclibResponse {
   id?: number;
@@ -10,7 +10,27 @@ export interface LrclibResponse {
   plainLyrics?: string | null;
 }
 
+const MAX_CACHE_SIZE = 200;
 const cache = new Map<string, LrclibResponse | null>();
+let activeAbortController: AbortController | null = null;
+
+function getCacheItem(key: string): { found: boolean; value: LrclibResponse | null } {
+  if (!cache.has(key)) return { found: false, value: null };
+  const val = cache.get(key) ?? null;
+  cache.delete(key);
+  cache.set(key, val);
+  return { found: true, value: val };
+}
+
+function setCacheItem(key: string, value: LrclibResponse | null) {
+  if (cache.has(key)) {
+    cache.delete(key);
+  } else if (cache.size >= MAX_CACHE_SIZE) {
+    const firstKey = cache.keys().next().value;
+    if (firstKey !== undefined) cache.delete(firstKey);
+  }
+  cache.set(key, value);
+}
 
 /**
  * Common Chinese <-> English artist alias mapping dictionary
@@ -173,6 +193,7 @@ function findBestMatch(
   const targetTrackSimp = toSimplified(targetTrack);
   const targetPureTrackSimp = toSimplified(targetPureTrack);
   const targetArtistSimp = toSimplified(targetArtist);
+  const targetArtistTrad = toTraditional(targetArtist);
 
   for (const item of results) {
     if (!item.syncedLyrics && !item.plainLyrics) continue;
@@ -181,6 +202,7 @@ function findBestMatch(
     const itemArtist = (item.artistName || '').toLowerCase();
     const itemTrackSimp = toSimplified(itemTrack);
     const itemArtistSimp = toSimplified(itemArtist);
+    const itemArtistTrad = toTraditional(itemArtist);
 
     const norm = (s: string) => s.toLowerCase().replace(/[^\w\u4e00-\u9fa5]/g, '');
     const targetNorm = norm(cleanTrack);
@@ -208,7 +230,7 @@ function findBestMatch(
 
     const artistExact = aliasMatch || (targetArtist && itemArtist && (
       itemArtist === targetArtist || itemArtistSimp === targetArtistSimp ||
-      toTraditional(itemArtist) === toTraditional(targetArtist) ||
+      itemArtistTrad === targetArtistTrad ||
       (itemArtist.includes(targetArtist) && targetArtist.length >= 2) ||
       (targetArtist.includes(itemArtist) && itemArtist.length >= 2)
     ));
@@ -216,8 +238,8 @@ function findBestMatch(
     const artistPartial = aliasMatch || (targetArtist && itemArtist && (
       itemArtist.includes(targetArtist) || targetArtist.includes(itemArtist) ||
       itemArtistSimp.includes(targetArtistSimp) || targetArtistSimp.includes(itemArtistSimp) ||
-      toTraditional(itemArtist).includes(toTraditional(targetArtist)) ||
-      toTraditional(targetArtist).includes(toTraditional(itemArtist))
+      itemArtistTrad.includes(targetArtistTrad) ||
+      targetArtistTrad.includes(itemArtistTrad)
     ));
 
     // If duration differs by >35 seconds AND title/artist don't match well, skip
@@ -303,6 +325,9 @@ function findBestMatch(
 export async function fetchLyrics(trackName: string, artistName: string, duration?: number): Promise<LrclibResponse | null> {
   if (!trackName || typeof trackName !== 'string') return null;
 
+  // Lazily load opencc-js bundle on demand
+  await ensureChineseConverter();
+
   // Sanitize control characters and clamp max string length to prevent forged query attacks
   const rawTrack = trackName.replace(/[\u0000-\u001F]/g, '').trim().slice(0, 200);
   const rawArtist = (artistName || '').replace(/[\u0000-\u001F]/g, '').trim().slice(0, 200);
@@ -312,18 +337,29 @@ export async function fetchLyrics(trackName: string, artistName: string, duratio
   const pureTrack = stripAllBrackets(cleanTrack);
   const cleanArtist = sanitizeArtistName(rawArtist);
 
-  const cacheKey = `${cleanTrack.toLowerCase()}__${cleanArtist.toLowerCase()}__${Math.round(duration || 0)}`;
-  if (cache.has(cacheKey)) {
-    return cache.get(cacheKey) || null;
+  const roundedDuration = typeof duration === 'number' && Number.isFinite(duration) && duration > 0 ? Math.round(duration) : 0;
+  const cacheKey = `${cleanTrack.toLowerCase()}__${cleanArtist.toLowerCase()}__${roundedDuration}`;
+  
+  const cached = getCacheItem(cacheKey);
+  if (cached.found) {
+    return cached.value;
   }
+
+  // Cancel in-flight request when tracks change rapidly
+  if (activeAbortController) {
+    activeAbortController.abort();
+  }
+  const currentController = new AbortController();
+  activeAbortController = currentController;
+  const signal = currentController.signal;
 
   try {
     const params = new URLSearchParams({
       track_name: pureTrack || cleanTrack,
       artist_name: cleanArtist,
     });
-    if (duration && duration > 0) {
-      params.append('duration', Math.round(duration).toString());
+    if (roundedDuration > 0) {
+      params.append('duration', roundedDuration.toString());
     }
 
     const getUrl = `https://lrclib.net/api/get?${params.toString()}`;
@@ -365,7 +401,11 @@ export async function fetchLyrics(trackName: string, artistName: string, duratio
     const uniqueSearchUrls = Array.from(new Set(searchUrls)).slice(0, 4);
 
     // Fire deduplicated endpoints concurrently for maximum speed and recall
-    const results = await Promise.allSettled(uniqueSearchUrls.map(url => fetch(url)));
+    const results = await Promise.allSettled(uniqueSearchUrls.map(url => fetch(url, { signal })));
+
+    if (signal.aborted) {
+      return null;
+    }
 
     const candidatePool: LrclibResponse[] = [];
     const seenIds = new Set<number>();
@@ -393,8 +433,12 @@ export async function fetchLyrics(trackName: string, artistName: string, duratio
       }
     }
 
+    if (signal.aborted) {
+      return null;
+    }
+
     if (candidatePool.length > 0) {
-      const best = findBestMatch(candidatePool, cleanTrack, cleanArtist, duration);
+      const best = findBestMatch(candidatePool, cleanTrack, cleanArtist, roundedDuration);
       if (best) {
         // Convert lyrics to Traditional Chinese (Taiwan standard) before returning
         const convertedBest: LrclibResponse = {
@@ -402,14 +446,23 @@ export async function fetchLyrics(trackName: string, artistName: string, duratio
           syncedLyrics: best.syncedLyrics ? toTraditional(best.syncedLyrics) : null,
           plainLyrics: best.plainLyrics ? toTraditional(best.plainLyrics) : null,
         };
-        cache.set(cacheKey, convertedBest);
+        setCacheItem(cacheKey, convertedBest);
         return convertedBest;
       }
     }
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.name === 'AbortError' || signal.aborted) {
+      return null;
+    }
     console.error('[LRCLIB] Fetch lyrics error:', err);
+  } finally {
+    if (activeAbortController === currentController) {
+      activeAbortController = null;
+    }
   }
 
-  cache.set(cacheKey, null);
+  if (!signal.aborted) {
+    setCacheItem(cacheKey, null);
+  }
   return null;
 }

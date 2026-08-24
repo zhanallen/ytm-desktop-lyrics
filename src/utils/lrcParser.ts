@@ -8,7 +8,7 @@ function sanitizeLyricText(input: string): string {
   if (!input) return '';
   return input
     .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/<[^>]+>/g, '')
+    .replace(/<\/?[a-zA-Z][^>]*>/g, '')
     .trim();
 }
 
@@ -22,9 +22,11 @@ function sanitizeLyricText(input: string): string {
  * - Clean metadata tag filtering ([ti:], [ar:], etc.)
  */
 export function parseLrc(lrcText: string): LyricLine[] {
-  if (!lrcText) return [];
+  if (!lrcText || typeof lrcText !== 'string') return [];
 
-  const rawLines = lrcText.split(/\r?\n/);
+  // Protect against abnormally huge payloads (Max 512KB)
+  const safeText = lrcText.length > 512 * 1024 ? lrcText.slice(0, 512 * 1024) : lrcText;
+  const rawLines = safeText.split(/\r?\n/);
   const result: LyricLine[] = [];
   let internalOffsetMs = 0;
 
@@ -94,7 +96,7 @@ export function parseLrc(lrcText: string): LyricLine[] {
 }
 
 /**
- * Finds the active lyric line index given current time (in seconds)
+ * Finds the active lyric line index given current time (in seconds) using O(log N) binary search.
  */
 export function getActiveLyricIndex(lyrics: LyricLine[], currentTime: number, offset: number = 0): number {
   if (!lyrics || lyrics.length === 0) return -1;
@@ -103,16 +105,21 @@ export function getActiveLyricIndex(lyrics: LyricLine[], currentTime: number, of
 
   if (adjustedTime < lyrics[0].time) return 0;
 
-  for (let i = 0; i < lyrics.length; i++) {
-    const current = lyrics[i];
-    const next = lyrics[i + 1];
+  let low = 0;
+  let high = lyrics.length - 1;
+  let result = 0;
 
-    if (adjustedTime >= current.time && (!next || adjustedTime < next.time)) {
-      return i;
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    if (lyrics[mid].time <= adjustedTime) {
+      result = mid;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
     }
   }
 
-  return lyrics.length - 1;
+  return result;
 }
 
 /**

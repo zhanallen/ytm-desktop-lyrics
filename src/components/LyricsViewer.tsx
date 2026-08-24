@@ -4,7 +4,7 @@
  * mouse wheel manual scrolling preview, and smooth auto-snap back functionality.
  */
 
-import React, { useLayoutEffect, useRef, useState } from 'react';
+import React, { useLayoutEffect, useEffect, useRef, useState } from 'react';
 import { LyricLine } from '../utils/lrcParser';
 import { LanguageMode, getTranslation } from '../i18n';
 
@@ -17,7 +17,7 @@ interface LyricsViewerProps {
   langMode: LanguageMode;
 }
 
-export const LyricsViewer: React.FC<LyricsViewerProps> = ({
+export const LyricsViewer: React.FC<LyricsViewerProps> = React.memo(({
   lyrics,
   activeIndex,
   isLoading,
@@ -29,32 +29,33 @@ export const LyricsViewer: React.FC<LyricsViewerProps> = ({
 
   /** Array of DOM references to individual lyric line elements. */
   const lineRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   /** Calculated Y-axis translation offset to keep active line centered. */
   const [translateY, setTranslateY] = useState<number>(0);
 
   /** Manual Y-axis offset added via mouse wheel scrolling. */
   const [manualOffset, setManualOffset] = useState<number>(0);
+  const [isUserScrolling, setIsUserScrolling] = useState<boolean>(false);
 
   /** Timer ref for snapping manual scroll offset back to 0 after inactivity. */
   const userScrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  /**
-   * Resets line references and manual scroll offset whenever a new track's lyrics are loaded.
-   */
-  useLayoutEffect(() => {
-    lineRefs.current = [];
-    setManualOffset(0);
-  }, [lyrics]);
+  const prevLyricsRef = useRef<LyricLine[]>(lyrics);
 
   /**
-   * Dynamic DOM Line Height Measuring Engine:
-   * Calculates the exact vertical midpoint of the currently active line (targetEl.offsetTop + targetEl.offsetHeight / 2)
-   * and translates the wrapper so the active lyric is strictly centered in the viewport.
+   * Resets manual scroll state when track lyrics change and updates the centered line translation
+   * in a single unified layout pass to eliminate forced double reflows.
    */
   useLayoutEffect(() => {
+    if (prevLyricsRef.current !== lyrics) {
+      prevLyricsRef.current = lyrics;
+      setManualOffset(0);
+      setIsUserScrolling(false);
+    }
+
     if (!lyrics || lyrics.length === 0) return;
-    const targetIdx = activeIndex >= 0 ? activeIndex : 0;
+    const targetIdx = activeIndex >= 0 ? Math.min(activeIndex, lyrics.length - 1) : 0;
     const targetEl = lineRefs.current[targetIdx];
     if (targetEl) {
       const lineCenter = targetEl.offsetTop + targetEl.offsetHeight / 2;
@@ -63,11 +64,65 @@ export const LyricsViewer: React.FC<LyricsViewerProps> = ({
   }, [activeIndex, lyrics]);
 
   /**
+   * Auto-realign lyrics vertical center when window is resized.
+   */
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const observer = new ResizeObserver(() => {
+      if (!lyrics || lyrics.length === 0) return;
+      const targetIdx = activeIndex >= 0 ? Math.min(activeIndex, lyrics.length - 1) : 0;
+      const targetEl = lineRefs.current[targetIdx];
+      if (targetEl) {
+        const lineCenter = targetEl.offsetTop + targetEl.offsetHeight / 2;
+        setTranslateY(-lineCenter);
+      }
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [activeIndex, lyrics]);
+
+  // Clean up auto-snap timer on unmount
+  useEffect(() => {
+    return () => {
+      if (userScrollTimeoutRef.current) {
+        clearTimeout(userScrollTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  /**
    * Handles mouse wheel scrolling for manual lyrics inspection.
-   * Temporarily shifts manualOffset and schedules auto-snap back after 3 seconds of inactivity.
+   * Clamps offset between first and last lyric bounds plus elastic overscroll margin.
+   * Schedules auto-snap back after 3 seconds of inactivity.
    */
   const handleWheel = (e: React.WheelEvent) => {
-    setManualOffset((prev) => prev - e.deltaY * 0.6);
+    if (!lyrics || lyrics.length === 0) return;
+    setIsUserScrolling(true);
+
+    setManualOffset((prev) => {
+      const delta = -e.deltaY * 0.6;
+      const nextOffset = prev + delta;
+
+      const targetIdx = activeIndex >= 0 ? Math.min(activeIndex, lyrics.length - 1) : 0;
+      const targetEl = lineRefs.current[targetIdx];
+      const firstEl = lineRefs.current[0];
+      const lastEl = lineRefs.current[lyrics.length - 1];
+
+      if (targetEl && firstEl && lastEl) {
+        const lineCenter = targetEl.offsetTop + targetEl.offsetHeight / 2;
+        const firstCenter = firstEl.offsetTop + firstEl.offsetHeight / 2;
+        const lastCenter = lastEl.offsetTop + lastEl.offsetHeight / 2;
+        const overscrollMargin = 100; // Elastic overscroll margin in pixels
+
+        const minOffset = (lineCenter - lastCenter) - overscrollMargin;
+        const maxOffset = (lineCenter - firstCenter) + overscrollMargin;
+
+        return Math.min(Math.max(nextOffset, minOffset), maxOffset);
+      }
+
+      return nextOffset;
+    });
 
     if (userScrollTimeoutRef.current) {
       clearTimeout(userScrollTimeoutRef.current);
@@ -76,16 +131,17 @@ export const LyricsViewer: React.FC<LyricsViewerProps> = ({
     // Smoothly snap back to 0 manual offset after 3 seconds of inactivity
     userScrollTimeoutRef.current = setTimeout(() => {
       setManualOffset(0);
+      setIsUserScrolling(false);
     }, 3000);
   };
 
   /* Render Status State: Searching for Lyrics */
   if (isLoading) {
     return (
-      <div className="lyrics-canvas" data-tauri-drag-region>
-        <div className="status-state">
-          <div className="pulse-dot" />
-          <span>{t.searchingLyrics}</span>
+      <div className="lyrics-canvas" role="region" aria-label={t.searchingLyrics} aria-live="polite" data-tauri-drag-region>
+        <div className="status-state" data-tauri-drag-region>
+          <div className="pulse-dot" data-tauri-drag-region />
+          <span data-tauri-drag-region>{t.searchingLyrics}</span>
         </div>
       </div>
     );
@@ -94,9 +150,9 @@ export const LyricsViewer: React.FC<LyricsViewerProps> = ({
   /* Render Status State: Waiting for YouTube Music Playback */
   if (!hasTrack) {
     return (
-      <div className="lyrics-canvas" data-tauri-drag-region>
-        <div className="status-state">
-          <span>{t.pleasePlayYtMusic}</span>
+      <div className="lyrics-canvas" role="region" aria-label={t.pleasePlayYtMusic} aria-live="polite" data-tauri-drag-region>
+        <div className="status-state" data-tauri-drag-region>
+          <span data-tauri-drag-region>{t.pleasePlayYtMusic}</span>
         </div>
       </div>
     );
@@ -105,9 +161,9 @@ export const LyricsViewer: React.FC<LyricsViewerProps> = ({
   /* Render Status State: Instrumental Track or Lyrics Not Found */
   if (!lyrics || lyrics.length === 0) {
     return (
-      <div className="lyrics-canvas" data-tauri-drag-region>
-        <div className="status-state">
-          <span>{t.noLyricsFound}</span>
+      <div className="lyrics-canvas" role="region" aria-label={t.noLyricsFound} aria-live="polite" data-tauri-drag-region>
+        <div className="status-state" data-tauri-drag-region>
+          <span data-tauri-drag-region>{t.noLyricsFound}</span>
         </div>
       </div>
     );
@@ -115,12 +171,11 @@ export const LyricsViewer: React.FC<LyricsViewerProps> = ({
 
   /** Total combined vertical transform including active line centering and manual mouse wheel offset. */
   const finalTranslateY = translateY + manualOffset;
-  const currentTargetIdx = activeIndex >= 0 ? activeIndex : 0;
 
   return (
-    <div className="lyrics-canvas" onWheel={handleWheel} data-tauri-drag-region>
+    <div ref={containerRef} className="lyrics-canvas" role="region" aria-label="Synced Lyrics" onWheel={handleWheel} data-tauri-drag-region>
       <div
-        className="lyrics-wrapper"
+        className={`lyrics-wrapper ${isUserScrolling ? 'is-manual-scrolling' : ''}`}
         style={{
           transform: `translate3d(0, ${finalTranslateY}px, 0)`,
         }}
@@ -135,13 +190,9 @@ export const LyricsViewer: React.FC<LyricsViewerProps> = ({
               key={`${index}__${line.time}`}
               ref={(el) => {
                 lineRefs.current[index] = el;
-                // Direct initial alignment when active target element mounts
-                if (index === currentTargetIdx && el) {
-                  const lineCenter = el.offsetTop + el.offsetHeight / 2;
-                  setTranslateY(-lineCenter);
-                }
               }}
               className={`ytm-lyric-line ${isActive ? 'active' : isPast ? 'past' : 'future'}`}
+              aria-current={isActive ? 'true' : undefined}
               data-tauri-drag-region
             >
               {line.text}
@@ -151,4 +202,4 @@ export const LyricsViewer: React.FC<LyricsViewerProps> = ({
       </div>
     </div>
   );
-};
+});

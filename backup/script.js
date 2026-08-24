@@ -14,7 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     {
       title: "Never Gonna Give You Up",
       artist: "Rick Astley",
-      albumArt: "https://lh3.googleusercontent.com/u/0/d/1_cover_rick",
+      albumArt: "",
       lyrics: [
         "We've known each other for so long",
         "Your heart's been aching, but you're too shy to say it",
@@ -30,7 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
     {
       title: "晴天 (Sunny Day)",
       artist: "周杰倫 (Jay Chou)",
-      albumArt: "https://lh3.googleusercontent.com/u/0/d/2_cover_jay",
+      albumArt: "",
       lyrics: [
         "故事的小黃花 從出生那年就飄著",
         "童年的蕩鞦韆 隨記憶一直晃到現在",
@@ -46,7 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
     {
       title: "Bohemian Rhapsody",
       artist: "Queen",
-      albumArt: "https://lh3.googleusercontent.com/u/0/d/3_cover_queen",
+      albumArt: "",
       lyrics: [
         "Is this the real life? Is this just fantasy?",
         "Caught in a landslide, no escape from reality",
@@ -128,12 +128,13 @@ document.addEventListener('DOMContentLoaded', () => {
   /** Current UI App State */
   const state = {
     currentTrackIndex: 0,
-    isPaused: false,
+    isPlayingTrack: false, // Initial desktop state is 'Not Playing' until user starts playback or selects a track
+    isPaused: true,
     showLyrics: true,
     isClickThrough: false,
     offset: 0.0,
     langMode: 'zh-TW',
-    uiState: 'normal', // 'normal' | 'searching' | 'waiting' | 'nolyrics'
+    uiState: 'waiting', // Default desktop initial state: 'waiting' ('請在 YouTube Music 播放歌曲')
     translateY: 0,
     manualOffset: 0
   };
@@ -146,14 +147,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const container = document.querySelector('.widget-container');
   const trackTitle = document.querySelector('.track-title');
   const trackArtist = document.querySelector('.track-artist');
-  const playPauseBtn = document.querySelector('.playback-btn.active');
+  const playPauseBtn = document.querySelectorAll('.playback-btn')[1];
   const prevBtn = document.querySelectorAll('.playback-btn')[0];
   const nextBtn = document.querySelectorAll('.playback-btn')[2];
   const settingsBtn = document.querySelector('.btn-settings');
   const toggleLyricsBtn = document.querySelector('.btn-lyrics-toggle');
   const lockBtn = document.querySelector('.btn-lock-toggle');
   const lyricsCanvas = document.querySelector('.lyrics-canvas');
-  const lyricsWrapper = document.querySelector('.lyrics-wrapper');
 
   // Modal elements
   const modalBackdrop = document.querySelector('.settings-modal-backdrop');
@@ -189,6 +189,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
   /** Render Track Meta (Title, Artist, Covers) */
   function renderTrackMeta() {
+    const t = getT();
+    if (!state.isPlayingTrack) {
+      if (trackTitle) {
+        trackTitle.textContent = t.ytMusic;
+        trackTitle.setAttribute('title', t.ytMusic);
+      }
+      if (trackArtist) {
+        trackArtist.textContent = t.notPlaying;
+        trackArtist.setAttribute('title', t.notPlaying);
+      }
+      return;
+    }
+
     const track = demoTracks[state.currentTrackIndex];
     if (trackTitle) {
       trackTitle.textContent = track.title;
@@ -202,7 +215,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   /** Render Lyrics Lines & Handle Auto Centering */
   function renderLyrics() {
-    if (!lyricsCanvas || !lyricsWrapper) return;
+    if (!lyricsCanvas) return;
 
     const t = getT();
 
@@ -216,7 +229,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    if (state.uiState === 'waiting') {
+    if (state.uiState === 'waiting' || !state.isPlayingTrack) {
       lyricsCanvas.innerHTML = `
         <div class="status-state">
           <span>${t.pleasePlayYtMusic}</span>
@@ -286,7 +299,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const t = getT();
 
     if (state.isPaused) {
-      playPauseBtn.classList.remove('active');
+      playPauseBtn.classList.remove('active', 'liquid-active-key');
       playPauseBtn.setAttribute('title', t.play);
       playPauseBtn.innerHTML = `
         <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -294,7 +307,7 @@ document.addEventListener('DOMContentLoaded', () => {
         </svg>
       `;
     } else {
-      playPauseBtn.classList.add('active');
+      playPauseBtn.classList.add('active', 'liquid-active-key');
       playPauseBtn.setAttribute('title', t.pause);
       playPauseBtn.innerHTML = `
         <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -392,7 +405,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // ==========================================================================
   if (lyricsCanvas) {
     lyricsCanvas.addEventListener('wheel', (e) => {
-      if (state.uiState !== 'normal') return;
+      if (state.uiState !== 'normal' || !state.isPlayingTrack) return;
       state.manualOffset -= e.deltaY * 0.6;
       applyTransform();
 
@@ -413,28 +426,47 @@ document.addEventListener('DOMContentLoaded', () => {
   // Play / Pause Button
   if (playPauseBtn) {
     playPauseBtn.addEventListener('click', () => {
-      state.isPaused = !state.isPaused;
+      if (!state.isPlayingTrack) {
+        state.isPlayingTrack = true;
+        state.isPaused = false;
+        state.uiState = 'normal';
+      } else {
+        state.isPaused = !state.isPaused;
+      }
+      renderTrackMeta();
+      renderLyrics();
       updatePlayPauseUI();
+      updateDockUI();
     });
   }
 
   // Previous Song
   if (prevBtn) {
     prevBtn.addEventListener('click', () => {
+      state.isPlayingTrack = true;
+      state.isPaused = false;
+      state.uiState = 'normal';
       state.currentTrackIndex = (state.currentTrackIndex - 1 + demoTracks.length) % demoTracks.length;
       state.manualOffset = 0;
       renderTrackMeta();
       renderLyrics();
+      updatePlayPauseUI();
+      updateDockUI();
     });
   }
 
   // Next Song
   if (nextBtn) {
     nextBtn.addEventListener('click', () => {
+      state.isPlayingTrack = true;
+      state.isPaused = false;
+      state.uiState = 'normal';
       state.currentTrackIndex = (state.currentTrackIndex + 1) % demoTracks.length;
       state.manualOffset = 0;
       renderTrackMeta();
       renderLyrics();
+      updatePlayPauseUI();
+      updateDockUI();
     });
   }
 
@@ -551,24 +583,47 @@ document.addEventListener('DOMContentLoaded', () => {
   const dockSongBtns = document.querySelectorAll('[data-dock-song]');
   const dockStateBtns = document.querySelectorAll('[data-dock-state]');
   const dockLangBtns = document.querySelectorAll('[data-dock-lang]');
+  const dockSizeBtns = document.querySelectorAll('[data-dock-size]');
+
+  function updateDockUI() {
+    dockSongBtns.forEach((b) => {
+      const idx = parseInt(b.getAttribute('data-dock-song'), 10);
+      b.classList.toggle('active', state.isPlayingTrack && state.currentTrackIndex === idx && state.uiState === 'normal');
+    });
+    dockStateBtns.forEach((b) => {
+      const st = b.getAttribute('data-dock-state');
+      b.classList.toggle('active', state.uiState === st);
+    });
+  }
 
   dockSongBtns.forEach((btn) => {
     btn.addEventListener('click', () => {
-      dockSongBtns.forEach((b) => b.classList.remove('active'));
-      btn.classList.add('active');
+      state.isPlayingTrack = true;
+      state.isPaused = false;
+      state.uiState = 'normal';
       state.currentTrackIndex = parseInt(btn.getAttribute('data-dock-song'), 10);
       state.manualOffset = 0;
       renderTrackMeta();
       renderLyrics();
+      updatePlayPauseUI();
+      updateDockUI();
     });
   });
 
   dockStateBtns.forEach((btn) => {
     btn.addEventListener('click', () => {
-      dockStateBtns.forEach((b) => b.classList.remove('active'));
-      btn.classList.add('active');
-      state.uiState = btn.getAttribute('data-dock-state');
+      const targetState = btn.getAttribute('data-dock-state');
+      state.uiState = targetState;
+      if (targetState === 'waiting') {
+        state.isPlayingTrack = false;
+        state.isPaused = true;
+      } else {
+        state.isPlayingTrack = true;
+      }
+      renderTrackMeta();
       renderLyrics();
+      updatePlayPauseUI();
+      updateDockUI();
     });
   });
 
@@ -586,6 +641,30 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  dockSizeBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      dockSizeBtns.forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      const sizeMode = btn.getAttribute('data-dock-size');
+      if (container) {
+        if (sizeMode === 'standard') {
+          container.style.width = '360px';
+          container.style.height = '520px';
+        } else if (sizeMode === 'compact') {
+          container.style.width = '295px';
+          container.style.height = '420px';
+        } else if (sizeMode === 'large') {
+          container.style.width = '420px';
+          container.style.height = '620px';
+        } else if (sizeMode === 'full') {
+          container.style.width = '100%';
+          container.style.height = '100%';
+        }
+      }
+      renderLyrics();
+    });
+  });
+
   // ==========================================================================
   // 8. INITIAL MOUNT DISPATCH
   // ==========================================================================
@@ -595,4 +674,5 @@ document.addEventListener('DOMContentLoaded', () => {
   updateLyricsVisibilityUI();
   updateClickThroughUI();
   updateOffsetUI();
+  updateDockUI();
 });
