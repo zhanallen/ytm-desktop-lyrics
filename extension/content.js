@@ -385,8 +385,9 @@
       socket.onopen = () => {
         console.log('[YT Music Sync] Connected to Desktop Widget on', wsUrl);
         updateBadgeStatus(true);
+        reconnectAttempts = 0;
         if (reconnectTimer) {
-          clearInterval(reconnectTimer);
+          clearTimeout(reconnectTimer);
           reconnectTimer = null;
         }
 
@@ -428,12 +429,24 @@
     }
   }
 
+  let reconnectAttempts = 0;
+  const BASE_RECONNECT_DELAY = 1000;
+  const MAX_RECONNECT_DELAY = 30000;
+
   function scheduleReconnect() {
-    if (!reconnectTimer) {
-      reconnectTimer = setInterval(() => {
-        connectWebSocket();
-      }, 2000);
-    }
+    if (reconnectTimer) return;
+
+    // Exponential backoff: base * (1.5^attempts) clamped to MAX_RECONNECT_DELAY
+    const backoff = Math.min(BASE_RECONNECT_DELAY * Math.pow(1.5, reconnectAttempts), MAX_RECONNECT_DELAY);
+    // Random jitter: +/- 25% (range 0.75 to 1.25)
+    const jitter = 0.75 + Math.random() * 0.5;
+    const delay = Math.round(backoff * jitter);
+
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      reconnectAttempts++;
+      connectWebSocket();
+    }, delay);
   }
 
   // Extract track data with Hybrid Millisecond-Precision Calibration Engine
@@ -536,6 +549,11 @@
   function sendUpdate() {
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
 
+    const video = getActiveVideoElement();
+    if (document.hidden && (!video || video.paused)) {
+      return;
+    }
+
     const data = extractTrackData();
     if (!data || !data.title) return;
 
@@ -560,15 +578,20 @@
     } catch (e) {}
   }
 
+  let observerDebounceTimer = null;
+
   // Setup DOM MutationObserver on ytmusic-player-bar & header
   function setupDOMObserver() {
     if (domObserver) return;
 
-    const targetNode = document.body;
+    const targetNode = document.querySelector('ytmusic-player-bar') || document.body;
 
     domObserver = new MutationObserver(() => {
-      createStatusBadge();
-      sendUpdate();
+      if (observerDebounceTimer) clearTimeout(observerDebounceTimer);
+      observerDebounceTimer = setTimeout(() => {
+        createStatusBadge();
+        sendUpdate();
+      }, 250);
     });
 
     domObserver.observe(targetNode, {

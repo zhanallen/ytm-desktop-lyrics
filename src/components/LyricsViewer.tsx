@@ -63,6 +63,9 @@ export const LyricsViewer: React.FC<LyricsViewerProps> = React.memo(({
     }
   }, [activeIndex, lyrics]);
 
+  const activeIndexRef = useRef(activeIndex);
+  activeIndexRef.current = activeIndex;
+
   /**
    * Auto-realign lyrics vertical center when window is resized.
    */
@@ -71,7 +74,8 @@ export const LyricsViewer: React.FC<LyricsViewerProps> = React.memo(({
     if (!container) return;
     const observer = new ResizeObserver(() => {
       if (!lyrics || lyrics.length === 0) return;
-      const targetIdx = activeIndex >= 0 ? Math.min(activeIndex, lyrics.length - 1) : 0;
+      const curIdx = activeIndexRef.current;
+      const targetIdx = curIdx >= 0 ? Math.min(curIdx, lyrics.length - 1) : 0;
       const targetEl = lineRefs.current[targetIdx];
       if (targetEl) {
         const lineCenter = targetEl.offsetTop + targetEl.offsetHeight / 2;
@@ -80,7 +84,7 @@ export const LyricsViewer: React.FC<LyricsViewerProps> = React.memo(({
     });
     observer.observe(container);
     return () => observer.disconnect();
-  }, [activeIndex, lyrics]);
+  }, [lyrics]);
 
   // Clean up auto-snap timer on unmount
   useEffect(() => {

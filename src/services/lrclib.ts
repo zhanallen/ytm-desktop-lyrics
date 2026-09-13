@@ -13,6 +13,52 @@ export interface LrclibResponse {
 const MAX_CACHE_SIZE = 200;
 const cache = new Map<string, LrclibResponse | null>();
 let activeAbortController: AbortController | null = null;
+let circuitBreakerUntil = 0;
+let consecutiveThrottleErrors = 0;
+
+function isCircuitOpen(): boolean {
+  return Date.now() < circuitBreakerUntil;
+}
+
+function recordResponseStatus(status: number): void {
+  if (status === 429 || status === 503) {
+    consecutiveThrottleErrors++;
+    if (consecutiveThrottleErrors >= 2) {
+      circuitBreakerUntil = Date.now() + 30000;
+    }
+  } else if (status !== 404 && status >= 200 && status < 400) {
+    consecutiveThrottleErrors = 0;
+  }
+}
+
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs: number = 6000): Promise<Response> {
+  const { signal: parentSignal, ...rest } = options;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  let onParentAbort: (() => void) | undefined;
+  if (parentSignal) {
+    if (parentSignal.aborted) {
+      clearTimeout(timer);
+      controller.abort();
+    } else {
+      onParentAbort = () => {
+        clearTimeout(timer);
+        controller.abort();
+      };
+      parentSignal.addEventListener('abort', onParentAbort);
+    }
+  }
+
+  try {
+    return await fetch(url, { ...rest, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+    if (parentSignal && onParentAbort) {
+      parentSignal.removeEventListener('abort', onParentAbort);
+    }
+  }
+}
 
 function getCacheItem(key: string): { found: boolean; value: LrclibResponse | null } {
   if (!cache.has(key)) return { found: false, value: null };
@@ -92,9 +138,11 @@ const ARTIST_ALIASES: [string, string][] = [
  */
 function stripAllBrackets(text: string): string {
   if (!text) return '';
-  let s = text;
+  let s = text.length > 500 ? text.slice(0, 500) : text;
   let prev = '';
-  while (s !== prev) {
+  let depth = 0;
+  while (s !== prev && depth < 10) {
+    depth++;
     prev = s;
     s = s.replace(/[\(\（【〔《［][^\(\（【〔《［\)\】〕》］]*[\)\】〕》］]/g, '').trim();
   }
@@ -324,6 +372,7 @@ function findBestMatch(
  */
 export async function fetchLyrics(trackName: string, artistName: string, duration?: number): Promise<LrclibResponse | null> {
   if (!trackName || typeof trackName !== 'string') return null;
+  if (isCircuitOpen()) return null;
 
   // Lazily load opencc-js bundle on demand
   await ensureChineseConverter();
@@ -401,7 +450,7 @@ export async function fetchLyrics(trackName: string, artistName: string, duratio
     const uniqueSearchUrls = Array.from(new Set(searchUrls)).slice(0, 4);
 
     // Fire deduplicated endpoints concurrently for maximum speed and recall
-    const results = await Promise.allSettled(uniqueSearchUrls.map(url => fetch(url, { signal })));
+    const results = await Promise.allSettled(uniqueSearchUrls.map(url => fetchWithTimeout(url, { signal }, 6000)));
 
     if (signal.aborted) {
       return null;
@@ -411,25 +460,37 @@ export async function fetchLyrics(trackName: string, artistName: string, duratio
     const seenIds = new Set<number>();
 
     for (const res of results) {
-      if (res.status === 'fulfilled' && res.value.ok) {
-        try {
-          const json = await res.value.json();
-          if (Array.isArray(json)) {
-            for (const item of json) {
-              if (item && item.id && !seenIds.has(item.id)) {
-                seenIds.add(item.id);
-                candidatePool.push(item);
+      if (candidatePool.length >= 25) break;
+      if (res.status === 'fulfilled') {
+        const response = res.value;
+        recordResponseStatus(response.status);
+
+        if (response.ok) {
+          const contentLength = response.headers.get('content-length');
+          if (contentLength && parseInt(contentLength, 10) > 256 * 1024) {
+            continue;
+          }
+
+          try {
+            const json = await response.json();
+            if (Array.isArray(json)) {
+              for (const item of json) {
+                if (candidatePool.length >= 25) break;
+                if (item && item.id && !seenIds.has(item.id)) {
+                  seenIds.add(item.id);
+                  candidatePool.push(item);
+                }
+              }
+            } else if (json && (json.syncedLyrics || json.plainLyrics)) {
+              if (json.id && !seenIds.has(json.id)) {
+                seenIds.add(json.id);
+                candidatePool.push(json);
+              } else if (!json.id && candidatePool.length < 25) {
+                candidatePool.push(json);
               }
             }
-          } else if (json && (json.syncedLyrics || json.plainLyrics)) {
-            if (json.id && !seenIds.has(json.id)) {
-              seenIds.add(json.id);
-              candidatePool.push(json);
-            } else if (!json.id) {
-              candidatePool.push(json);
-            }
-          }
-        } catch (e) {}
+          } catch (e) {}
+        }
       }
     }
 

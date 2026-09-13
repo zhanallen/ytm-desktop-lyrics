@@ -5,20 +5,18 @@
  * persistent localStorage state retention, and cross-window settings broadcasting.
  */
 
-import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, emit } from '@tauri-apps/api/event';
 import { parseLrc, getActiveLyricIndex, LyricLine } from './utils/lrcParser';
 import { fetchLyrics } from './services/lrclib';
 import { ControlPanel } from './components/ControlPanel';
 import { LyricsViewer } from './components/LyricsViewer';
-import type { UITheme } from './components/SettingsPage';
+import type { UITheme, GlassQuality } from './components/SettingsPage';
+import { SettingsPage } from './components/SettingsPage';
 import { LiquidGlassCanvas } from './components/LiquidGlassCanvas';
 import { LanguageMode, detectLanguage } from './i18n';
-
-const SettingsPage = React.lazy(() =>
-  import('./components/SettingsPage').then((m) => ({ default: m.SettingsPage }))
-);
+import { memoryManager } from './services/memoryManager';
 
 /** Interface defining YouTube Music track data payload received via IPC / WebSocket. */
 interface TrackPayload {
@@ -37,6 +35,52 @@ interface TrackPayload {
  * the secondary native SettingsPage or the primary desktop MainWidgetApp.
  */
 export const App: React.FC = () => {
+  // Track B Memory Optimization: 60-second idle memory governance listener
+  useEffect(() => {
+    let idleTimer: number | null = null;
+
+    const performTrimAndGc = () => {
+      invoke('trim_memory').catch(() => {});
+      try {
+        (window as any).gc?.();
+      } catch {}
+    };
+
+    const resetIdleTimer = () => {
+      if (idleTimer !== null) {
+        window.clearTimeout(idleTimer);
+      }
+      idleTimer = window.setTimeout(() => {
+        performTrimAndGc();
+        resetIdleTimer();
+      }, 60000);
+    };
+
+    const handleActivity = () => {
+      resetIdleTimer();
+    };
+
+    window.addEventListener('mousemove', handleActivity, { passive: true });
+    window.addEventListener('mousedown', handleActivity, { passive: true });
+    window.addEventListener('keydown', handleActivity, { passive: true });
+    window.addEventListener('wheel', handleActivity, { passive: true });
+    window.addEventListener('touchstart', handleActivity, { passive: true });
+
+    // Initial 60-second idle countdown
+    resetIdleTimer();
+
+    return () => {
+      if (idleTimer !== null) {
+        window.clearTimeout(idleTimer);
+      }
+      window.removeEventListener('mousemove', handleActivity);
+      window.removeEventListener('mousedown', handleActivity);
+      window.removeEventListener('keydown', handleActivity);
+      window.removeEventListener('wheel', handleActivity);
+      window.removeEventListener('touchstart', handleActivity);
+    };
+  }, []);
+
   // Check if current window route is the settings window using URLSearchParams
   const searchParams = new URLSearchParams(window.location.search);
   const isSettingsRoute =
@@ -44,11 +88,7 @@ export const App: React.FC = () => {
     window.location.hash.includes('settings');
 
   if (isSettingsRoute) {
-    return (
-      <Suspense fallback={null}>
-        <SettingsPage />
-      </Suspense>
-    );
+    return <SettingsPage />;
   }
 
   return <MainWidgetApp />;
@@ -79,11 +119,16 @@ const MainWidgetApp: React.FC = () => {
     return 0;
   });
 
-  /** Mouse click-through state (ignore cursor events). */
-  const [isClickThrough, setIsClickThrough] = useState<boolean>(false);
+  /** Mouse click-through state (ignore cursor events), initialized from localStorage. */
+  const [isClickThrough, setIsClickThrough] = useState<boolean>(() => {
+    return localStorage.getItem('ytm_clickthrough') === 'true';
+  });
 
-  /** Lyrics display visibility toggle state. */
-  const [showLyrics, setShowLyrics] = useState<boolean>(true);
+  /** Lyrics display visibility toggle state, initialized from localStorage. */
+  const [showLyrics, setShowLyrics] = useState<boolean>(() => {
+    const saved = localStorage.getItem('ytm_show_lyrics');
+    return saved !== 'false';
+  });
 
   /** Language preference mode ('system', 'zh-TW', or 'en'), initialized from localStorage with system auto default. */
   const [languageMode, setLanguageMode] = useState<LanguageMode>(() => {
@@ -100,8 +145,8 @@ const MainWidgetApp: React.FC = () => {
   /* Mutable References for Stable Subpixel Calculations and Async Event Guards */
   const currentSongRef = useRef<string>('');
   const latestTrackRef = useRef<TrackPayload | null>(null);
-  const isClickThroughRef = useRef<boolean>(false);
-  const showLyricsRef = useRef<boolean>(true);
+  const isClickThroughRef = useRef<boolean>(isClickThrough);
+  const showLyricsRef = useRef<boolean>(showLyrics);
   const offsetRef = useRef<number>(0);
   const languageModeRef = useRef<LanguageMode>('system');
   const uiThemeRef = useRef<UITheme>('default');
@@ -109,14 +154,18 @@ const MainWidgetApp: React.FC = () => {
   /** Real-time memory for expanded window physical height (default 560px), stored using Math.floor. */
   const savedExpandedHeightRef = useRef<number>(560);
 
-  /** Keep click-through ref in sync with state. */
+  /** Keep click-through ref in sync with state and persist. */
   useEffect(() => {
     isClickThroughRef.current = isClickThrough;
+    localStorage.setItem('ytm_clickthrough', String(isClickThrough));
+    broadcastStateToSettings();
   }, [isClickThrough]);
 
-  /** Keep show-lyrics ref in sync with state. */
+  /** Keep show-lyrics ref in sync with state and persist. */
   useEffect(() => {
     showLyricsRef.current = showLyrics;
+    localStorage.setItem('ytm_show_lyrics', String(showLyrics));
+    broadcastStateToSettings();
   }, [showLyrics]);
 
   /** Keep UI theme ref in sync with state. */
@@ -144,6 +193,12 @@ const MainWidgetApp: React.FC = () => {
     invoke('update_tray_language', { isEnglish: activeLang === 'en' }).catch(() => {});
   }, [languageMode]);
 
+  /** Initialize capture quality on mount from localStorage */
+  useEffect(() => {
+    const savedQuality = localStorage.getItem('ytm_glass_quality');
+    invoke('set_capture_quality', { isNative: savedQuality !== 'performance' }).catch(() => {});
+  }, []);
+
   const lastMinHeightRef = useRef<number>(0);
   const isInitialMountRef = useRef<boolean>(true);
 
@@ -159,12 +214,16 @@ const MainWidgetApp: React.FC = () => {
     const storedTheme = localStorage.getItem('ytm_ui_theme');
     const activeTheme = storedTheme === 'liquid-glass' ? 'liquid-glass' : 'default';
 
+    const storedQuality = localStorage.getItem('ytm_glass_quality');
+    const activeQuality = storedQuality === 'performance' ? 'performance' : 'native';
+
     emit('sync-settings-state', {
       offset: offsetRef.current,
       isClickThrough: isClickThroughRef.current,
       showLyrics: showLyricsRef.current,
       languageMode: activeMode,
       uiTheme: activeTheme,
+      glassQuality: activeQuality,
     });
   };
 
@@ -263,6 +322,7 @@ const MainWidgetApp: React.FC = () => {
         }
 
         setShowLyrics(false);
+        localStorage.setItem('ytm_show_lyrics', 'false');
 
         // Collapse to compact mode using Math.floor
         const headerHeight = headerEl ? (headerEl.scrollHeight > 0 ? headerEl.scrollHeight : 84) : 84;
@@ -277,6 +337,7 @@ const MainWidgetApp: React.FC = () => {
         broadcastStateToSettings();
       } else {
         setShowLyrics(true);
+        localStorage.setItem('ytm_show_lyrics', 'true');
 
         // Directly restore savedExpandedHeightRef with Math.floor calculation
         const physWidth = Math.floor(currentWidth * factor);
@@ -323,6 +384,7 @@ const MainWidgetApp: React.FC = () => {
         if (latestTrackRef.current) {
           setTrack({ ...latestTrackRef.current });
         }
+        memoryManager.triggerProactiveGc('song-change');
       }
     } else {
       setTrack(payload);
@@ -334,6 +396,7 @@ const MainWidgetApp: React.FC = () => {
     const nextState = targetState !== undefined ? targetState : !isClickThroughRef.current;
     setIsClickThrough(nextState);
     isClickThroughRef.current = nextState;
+    localStorage.setItem('ytm_clickthrough', String(nextState));
 
     if (document.activeElement && (document.activeElement as HTMLElement).blur) {
       (document.activeElement as HTMLElement).blur();
@@ -440,9 +503,24 @@ const MainWidgetApp: React.FC = () => {
           if (event.payload === 'default' || event.payload === 'liquid-glass') {
             setUiTheme(event.payload);
             localStorage.setItem('ytm_ui_theme', event.payload);
+            if (event.payload === 'default') {
+              invoke('trim_memory').catch(() => {});
+              try {
+                (window as any).gc?.();
+              } catch {}
+            }
           }
         });
         if (isMounted) unlistens.push(u10); else u10();
+
+        const u11 = await listen<GlassQuality>('change-glass-quality-cmd', (event) => {
+          if (!isMounted) return;
+          const quality = event.payload === 'performance' ? 'performance' : 'native';
+          localStorage.setItem('ytm_glass_quality', quality);
+          invoke('set_capture_quality', { isNative: quality === 'native' }).catch(() => {});
+          broadcastStateToSettings();
+        });
+        if (isMounted) unlistens.push(u11); else u11();
       } catch (e) {}
     };
 

@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
-    "devUrl": "http://localhost:14280",
+    "devUrl": "http://127.0.0.1:1420",
     "frontendDist": "../dist"
   },
   "app": {
@@ -28,24 +28,10 @@
         "shadow": false,
         "visible": true,
         "skipTaskbar": true
-      },
-      {
-        "label": "settings",
-        "title": "偏好設定 - YT Music Lyrics",
-        "width": 360,
-        "height": 480,
-        "resizable": false,
-        "maximizable": false,
-        "decorations": true,
-        "transparent": false,
-        "alwaysOnTop": false,
-        "center": true,
-        "visible": false,
-        "url": "index.html?window=settings"
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://lrclib.net ws://127.0.0.1:27890 https://api.github.com; img-src 'self' https: data:;"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://lrclib.net ws://127.0.0.1:27890 ws://localhost:27890 https://api.github.com; img-src 'self' data: blob: https:;"
     }
   },
   "bundle": {

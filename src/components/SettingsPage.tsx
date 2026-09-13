@@ -5,11 +5,14 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { emit, listen } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { RotateCcw, Clock, Keyboard, MousePointer, Globe, Sparkles } from 'lucide-react';
 import { LanguageMode, getTranslation } from '../i18n';
 
 export type UITheme = 'default' | 'liquid-glass';
+export type GlassQuality = 'native' | 'performance';
 
 export const SettingsPage: React.FC = () => {
   /** Local offset state initialized from localStorage with fallback to 0. */
@@ -22,11 +25,16 @@ export const SettingsPage: React.FC = () => {
     return 0;
   });
 
-  /** Widget click-through state. */
-  const [isClickThrough, setIsClickThrough] = useState<boolean>(false);
+  /** Widget click-through state initialized from localStorage. */
+  const [isClickThrough, setIsClickThrough] = useState<boolean>(() => {
+    return localStorage.getItem('ytm_clickthrough') === 'true';
+  });
 
-  /** Widget lyrics visibility state. */
-  const [showLyrics, setShowLyrics] = useState<boolean>(true);
+  /** Widget lyrics visibility state initialized from localStorage. */
+  const [showLyrics, setShowLyrics] = useState<boolean>(() => {
+    const saved = localStorage.getItem('ytm_show_lyrics');
+    return saved !== 'false';
+  });
 
   /** Language mode preference initialized from localStorage with fallback to system default. */
   const [languageMode, setLanguageMode] = useState<LanguageMode>(() => {
@@ -40,8 +48,23 @@ export const SettingsPage: React.FC = () => {
     return saved === 'liquid-glass' ? 'liquid-glass' : 'default';
   });
 
+  /** Glass capture quality preference initialized from localStorage. */
+  const [glassQuality, setGlassQuality] = useState<GlassQuality>(() => {
+    const saved = localStorage.getItem('ytm_glass_quality');
+    return saved === 'performance' ? 'performance' : 'native';
+  });
+
   /** Resolved translation dictionary object for current language mode. */
   const t = getTranslation(languageMode);
+
+  /** Helper for safe IPC event emission with robust exception catching */
+  const safeEmit = async (event: string, payload?: unknown) => {
+    try {
+      await emit(event, payload);
+    } catch (err) {
+      console.warn(`Failed to emit ${event}:`, err);
+    }
+  };
 
   /**
    * Effect hook to subscribe to state synchronization events from the main widget application window.
@@ -58,22 +81,28 @@ export const SettingsPage: React.FC = () => {
         showLyrics: boolean;
         languageMode?: LanguageMode;
         uiTheme?: UITheme;
+        glassQuality?: GlassQuality;
       }>('sync-settings-state', (event) => {
         if (!isMounted || !event.payload) return;
         setOffset(event.payload.offset);
         setIsClickThrough(event.payload.isClickThrough);
         setShowLyrics(event.payload.showLyrics);
+        localStorage.setItem('ytm_clickthrough', String(event.payload.isClickThrough));
+        localStorage.setItem('ytm_show_lyrics', String(event.payload.showLyrics));
         if (event.payload.languageMode) {
           setLanguageMode(event.payload.languageMode);
         }
         if (event.payload.uiTheme) {
           setUiTheme(event.payload.uiTheme);
         }
+        if (event.payload.glassQuality) {
+          setGlassQuality(event.payload.glassQuality);
+        }
       });
       if (isMounted) unlistens.push(u1); else u1();
 
       // Request latest state snapshot from main widget window upon settings window creation
-      emit('request-settings-state');
+      safeEmit('request-settings-state');
     };
 
     setupSync();
@@ -84,6 +113,57 @@ export const SettingsPage: React.FC = () => {
     };
   }, []);
 
+  /** Emit settings-window-ready to notify host window to show smoothly */
+  useEffect(() => {
+    safeEmit('settings-window-ready');
+    try {
+      getCurrentWindow().show().catch(() => {});
+    } catch {}
+  }, []);
+
+  /** Window blur and 60-second idle memory optimization for settings window */
+  useEffect(() => {
+    let idleTimer: number | null = null;
+    const triggerTrimAndGc = () => {
+      invoke('trim_memory').catch(() => {});
+      try {
+        (window as any).gc?.();
+      } catch {}
+    };
+
+    const resetIdleTimer = () => {
+      if (idleTimer !== null) clearTimeout(idleTimer);
+      idleTimer = window.setTimeout(() => {
+        triggerTrimAndGc();
+        resetIdleTimer();
+      }, 60000);
+    };
+
+    const handleBlur = () => {
+      triggerTrimAndGc();
+    };
+
+    const handleActivity = () => {
+      resetIdleTimer();
+    };
+
+    window.addEventListener('blur', handleBlur);
+    window.addEventListener('mousemove', handleActivity, { passive: true });
+    window.addEventListener('mousedown', handleActivity, { passive: true });
+    window.addEventListener('keydown', handleActivity, { passive: true });
+
+    resetIdleTimer();
+
+    return () => {
+      if (idleTimer !== null) clearTimeout(idleTimer);
+      window.removeEventListener('blur', handleBlur);
+      window.removeEventListener('mousemove', handleActivity);
+      window.removeEventListener('mousedown', handleActivity);
+      window.removeEventListener('keydown', handleActivity);
+      triggerTrimAndGc();
+    };
+  }, []);
+
   /**
    * Handles lyric sync offset adjustments.
    * Updates local UI state instantly for 0ms latency and broadcasts change-offset-delta to main window.
@@ -91,39 +171,56 @@ export const SettingsPage: React.FC = () => {
   const handleOffsetChange = (delta: number) => {
     const nextOffset = Math.round((offset + delta) * 10) / 10;
     setOffset(nextOffset);
-    emit('change-offset-delta', delta);
+    safeEmit('change-offset-delta', delta);
   };
 
   /** Resets lyric sync offset back to 0.0s and notifies main window. */
   const handleOffsetReset = () => {
     setOffset(0);
-    emit('reset-offset');
+    safeEmit('reset-offset');
   };
 
   /** Toggles mouse click-through mode state and emits command to main window. */
   const handleToggleClickThrough = () => {
-    setIsClickThrough(!isClickThrough);
-    emit('toggle-click-through-cmd');
+    const nextVal = !isClickThrough;
+    setIsClickThrough(nextVal);
+    localStorage.setItem('ytm_clickthrough', String(nextVal));
+    safeEmit('toggle-click-through-cmd');
   };
 
   /** Toggles lyrics visibility state and emits command to main window. */
   const handleToggleLyrics = () => {
-    setShowLyrics(!showLyrics);
-    emit('toggle-lyrics-cmd');
+    const nextVal = !showLyrics;
+    setShowLyrics(nextVal);
+    localStorage.setItem('ytm_show_lyrics', String(nextVal));
+    safeEmit('toggle-lyrics-cmd');
   };
 
   /** Updates language mode preference, saves to localStorage, and broadcasts to main window. */
   const handleLanguageChange = (mode: LanguageMode) => {
     setLanguageMode(mode);
     localStorage.setItem('ytm_lang', mode);
-    emit('change-language-cmd', mode);
+    safeEmit('change-language-cmd', mode);
   };
 
   /** Updates UI theme mode, saves to localStorage, and broadcasts to main window. */
   const handleUiThemeChange = (theme: UITheme) => {
     setUiTheme(theme);
     localStorage.setItem('ytm_ui_theme', theme);
-    emit('change-ui-theme-cmd', theme);
+    safeEmit('change-ui-theme-cmd', theme);
+    if (theme === 'default') {
+      invoke('trim_memory').catch(() => {});
+      try {
+        (window as any).gc?.();
+      } catch {}
+    }
+  };
+
+  /** Updates glass capture quality preference, saves to localStorage, and broadcasts to main window. */
+  const handleGlassQualityChange = (quality: GlassQuality) => {
+    setGlassQuality(quality);
+    localStorage.setItem('ytm_glass_quality', quality);
+    safeEmit('change-glass-quality-cmd', quality);
   };
 
   /** Formats offset number into readable string representation (e.g. +0.5s or -0.2s). */
@@ -204,6 +301,35 @@ export const SettingsPage: React.FC = () => {
               </button>
             </div>
           </div>
+
+          {/* Section 3.5: Glass Background Quality
+              Conditionally rendered exclusively when Liquid Glass theme is selected.
+              When switching back to 'default', this sub-configuration section is unmounted from the DOM,
+              while the user's glassQuality preference remains persisted in React state and localStorage. */}
+          {uiTheme === 'liquid-glass' && (
+            <div className="settings-subcard-reveal">
+              <div className="settings-section settings-nested-section">
+                <div className="settings-section-label">
+                  <Sparkles size={13} className="section-icon" />
+                  <span>{t.glassQualityTitle}</span>
+                </div>
+                <div className="settings-toggle-row">
+                  <button
+                    className={`control-btn modal-toggle-btn ${glassQuality === 'native' ? 'active' : ''}`}
+                    onClick={() => handleGlassQualityChange('native')}
+                  >
+                    <span>{t.qualityNative}</span>
+                  </button>
+                  <button
+                    className={`control-btn modal-toggle-btn ${glassQuality === 'performance' ? 'active' : ''}`}
+                    onClick={() => handleGlassQualityChange('performance')}
+                  >
+                    <span>{t.qualityPerf}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Section 4: Language Settings */}
           <div className="settings-section">
