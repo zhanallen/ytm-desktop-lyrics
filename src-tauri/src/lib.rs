@@ -8,7 +8,7 @@ mod ws_server;
 #[cfg(target_os = "windows")]
 mod dxgi_capture;
 
-use tauri::{Emitter, Listener, Manager};
+use tauri::{Emitter, Manager};
 use tauri::menu::{MenuBuilder, MenuItem, MenuItemBuilder};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
@@ -110,7 +110,9 @@ fn resize_physical_window(window: tauri::Window, width: u32, height: u32) -> Res
 #[tauri::command]
 fn set_min_height_only(window: tauri::Window, height: u32) -> Result<(), String> {
     DYNAMIC_MIN_PHYS_HEIGHT.store(height as i32, Ordering::SeqCst);
-    let _ = window.set_min_size(Some(tauri::Size::Logical(tauri::LogicalSize::new(295.0, 86.0))));
+    let scale_factor = window.scale_factor().unwrap_or(1.0);
+    let logical_height = (height as f64) / scale_factor;
+    let _ = window.set_min_size(Some(tauri::Size::Logical(tauri::LogicalSize::new(280.0, logical_height))));
     Ok(())
 }
 
@@ -121,11 +123,14 @@ fn set_min_height_only(window: tauri::Window, height: u32) -> Result<(), String>
 #[tauri::command]
 fn lock_window_height(window: tauri::Window, width: u32, height: u32, is_locked: bool) -> Result<(), String> {
     if is_locked {
+        let scale_factor = window.scale_factor().unwrap_or(1.0);
+        let logical_height = (height as f64) / scale_factor;
+        let _ = window.set_min_size(Some(tauri::Size::Logical(tauri::LogicalSize::new(280.0, logical_height))));
         DYNAMIC_MIN_PHYS_HEIGHT.store(height as i32, Ordering::SeqCst);
     } else {
         DYNAMIC_MIN_PHYS_HEIGHT.store(0, Ordering::SeqCst);
+        let _ = window.set_min_size(Some(tauri::Size::Logical(tauri::LogicalSize::new(280.0, 86.0))));
     }
-    let _ = window.set_min_size(Some(tauri::Size::Logical(tauri::LogicalSize::new(295.0, 86.0))));
     let _ = window.set_max_size(Option::<tauri::Size>::None);
     
     let current_width = window.outer_size().map(|s| s.width).unwrap_or(width);
@@ -677,78 +682,17 @@ fn toggle_lyrics_visibility(app_handle: tauri::AppHandle) -> Result<(), String> 
 
 /**
  * Tauri Command: Opens or focuses the native secondary preferences window (360x480, standard window level).
- * When closed by the user, the window and its WebView2 renderer process are destroyed, freeing memory.
+ * Shows, unminimizes, sets always on top, focuses, and emits the request-settings-state event.
  */
 #[tauri::command]
 fn open_settings_window(app_handle: tauri::AppHandle) -> Result<(), String> {
     if let Some(existing) = app_handle.get_webview_window("settings") {
         let _ = existing.show();
         let _ = existing.unminimize();
+        let _ = existing.set_always_on_top(true);
         let _ = existing.set_focus();
         let _ = app_handle.emit("request-settings-state", ());
-        return Ok(());
     }
-
-    let settings_window = tauri::WebviewWindowBuilder::new(
-        &app_handle,
-        "settings",
-        tauri::WebviewUrl::App("index.html?window=settings".into()),
-    )
-    .title("偏好設定 - YT Music Lyrics")
-    .inner_size(360.0, 480.0)
-    .resizable(false)
-    .maximizable(false)
-    .decorations(true)
-    .transparent(false)
-    .always_on_top(false)
-    .center()
-    .visible(false)
-    .background_color(tauri::window::Color(13, 17, 24, 255))
-    .build()
-    .map_err(|e| e.to_string())?;
-
-    // On window destruction or close, allow natural destruction and trigger working set trimming
-    settings_window.on_window_event(move |event| {
-        match event {
-            tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed => {
-                trim_process_working_set();
-                // Schedule a deferred trim to reclaim memory once the secondary WebView2 process exits
-                tauri::async_runtime::spawn(async {
-                    tokio::time::sleep(tokio::time::Duration::from_millis(800)).await;
-                    trim_process_working_set();
-                });
-            }
-            _ => {}
-        }
-    });
-
-    let shown = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-
-    // Listen for "settings-window-ready" event from the settings window to eliminate white flash
-    let shown_ready = shown.clone();
-    let win_ready = settings_window.clone();
-    let app_ready = app_handle.clone();
-    settings_window.once("settings-window-ready", move |_| {
-        if shown_ready.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
-            let _ = win_ready.show();
-            let _ = win_ready.set_focus();
-            let _ = app_ready.emit("request-settings-state", ());
-        }
-    });
-
-    // Fallback timeout (350ms): if "settings-window-ready" hasn't fired in 350ms, show anyway so it never stays permanently hidden
-    let shown_timeout = shown;
-    let win_timeout = settings_window.clone();
-    let app_timeout = app_handle.clone();
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(tokio::time::Duration::from_millis(350)).await;
-        if shown_timeout.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
-            let _ = win_timeout.show();
-            let _ = win_timeout.set_focus();
-            let _ = app_timeout.emit("request-settings-state", ());
-        }
-    });
-
     Ok(())
 }
 
@@ -897,11 +841,17 @@ pub mod win32_subclass {
                 let dpi = GetDpiForWindow(hwnd);
                 let scale_factor: f64 = if dpi > 0 { dpi as f64 / 96.0 } else { 1.0 };
 
-                let min_phys_width = (295.0 * scale_factor).ceil() as i32;
-                let min_phys_height = (86.0 * scale_factor).ceil() as i32;
+                let min_phys_width = (280.0 * scale_factor).ceil() as i32;
+                let target_min = DYNAMIC_MIN_PHYS_HEIGHT.load(Ordering::SeqCst);
+                let min_phys_height = if target_min > 0 {
+                    target_min
+                } else {
+                    (86.0 * scale_factor).ceil() as i32
+                };
 
                 info.ptMinTrackSize.x = min_phys_width;
                 info.ptMinTrackSize.y = min_phys_height;
+                return 0;
             }
             WM_DESTROY => {
                 RemoveWindowSubclass(hwnd, Some(subclass_proc), SUBCLASS_ID);
@@ -1056,7 +1006,7 @@ pub fn run() {
                 .build()?;
 
             let icon = app.default_window_icon().cloned();
-            let mut tray_builder = TrayIconBuilder::new()
+            let mut tray_builder = TrayIconBuilder::with_id("main-tray")
                 .menu(&tray_menu)
                 .show_menu_on_left_click(true);
             if let Some(ic) = icon {
@@ -1145,6 +1095,18 @@ pub fn run() {
                 }
             }
 
+            // Intercept close requests on settings window to hide instead of destroy
+            if let Some(settings_win) = app.get_webview_window("settings") {
+                let settings_win_clone = settings_win.clone();
+                settings_win.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = settings_win_clone.hide();
+                        trim_process_working_set();
+                    }
+                });
+            }
+
             // Spawn Tokio WebSocket Server Task
             tauri::async_runtime::spawn(async move {
                 ws_server::start_ws_server(app_handle).await;
@@ -1155,12 +1117,6 @@ pub fn run() {
                 // Initial trim 6 seconds after boot (after WebGL / WebView2 initialization)
                 tokio::time::sleep(tokio::time::Duration::from_secs(6)).await;
                 trim_process_working_set();
-
-                // Periodic trim every 90 seconds in background
-                loop {
-                    tokio::time::sleep(tokio::time::Duration::from_secs(90)).await;
-                    trim_process_working_set();
-                }
             });
 
             // Register Global Hotkey Alt+L for Click-Through Toggle

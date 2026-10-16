@@ -28,6 +28,21 @@
         "shadow": false,
         "visible": true,
         "skipTaskbar": true
+      },
+      {
+        "label": "settings",
+        "title": "偏好設定 - YT Music Lyrics",
+        "url": "index.html?window=settings",
+        "width": 360,
+        "height": 480,
+        "resizable": false,
+        "maximizable": false,
+        "decorations": true,
+        "transparent": false,
+        "alwaysOnTop": true,
+        "center": true,
+        "visible": false,
+        "skipTaskbar": false
       }
     ],
     "security": {

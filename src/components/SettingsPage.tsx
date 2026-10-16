@@ -8,7 +8,7 @@ import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { emit, listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { RotateCcw, Clock, Keyboard, MousePointer, Globe, Sparkles } from 'lucide-react';
+import { RotateCcw, Clock, Keyboard, MousePointer, Globe, Sparkles, X } from 'lucide-react';
 import { LanguageMode, getTranslation } from '../i18n';
 
 export type UITheme = 'default' | 'liquid-glass';
@@ -66,6 +66,18 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
+  /** Handles closing the secondary native settings window safely by hiding it first */
+  const handleCloseWindow = () => {
+    try {
+      getCurrentWindow().hide().catch((err) => {
+        console.warn('Failed to hide settings window, falling back to close:', err);
+        getCurrentWindow().close().catch(() => {});
+      });
+    } catch (err) {
+      console.warn('Failed to get current window instance:', err);
+    }
+  };
+
   /**
    * Effect hook to subscribe to state synchronization events from the main widget application window.
    * Includes strict isMounted checks and cleanup array to prevent duplicate event listener memory leaks.
@@ -116,9 +128,6 @@ export const SettingsPage: React.FC = () => {
   /** Emit settings-window-ready to notify host window to show smoothly */
   useEffect(() => {
     safeEmit('settings-window-ready');
-    try {
-      getCurrentWindow().show().catch(() => {});
-    } catch {}
   }, []);
 
   /** Window blur and 60-second idle memory optimization for settings window */
@@ -230,6 +239,22 @@ export const SettingsPage: React.FC = () => {
   return (
     <div className="settings-window-container">
       <div className="settings-modal-card">
+        {/* In-App Native Header with Drag Region and Close Button */}
+        <header className="settings-modal-header" data-tauri-drag-region>
+          <div className="settings-header-title" data-tauri-drag-region>
+            <Sparkles size={15} className="settings-header-icon" />
+            <span>{t.preferencesTitle}</span>
+          </div>
+          <button
+            className="settings-close-btn"
+            onClick={handleCloseWindow}
+            title={t.close}
+            aria-label={t.close}
+          >
+            <X size={15} />
+          </button>
+        </header>
+
         {/* Native OS Window Body Content with Custom Scrollbar */}
         <div className="settings-modal-body">
           {/* Section 1: Lyric Offset Adjustment */}

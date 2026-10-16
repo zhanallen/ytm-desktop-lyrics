@@ -8,6 +8,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, emit } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { parseLrc, getActiveLyricIndex, LyricLine } from './utils/lrcParser';
 import { fetchLyrics } from './services/lrclib';
 import { ControlPanel } from './components/ControlPanel';
@@ -27,6 +28,51 @@ interface TrackPayload {
   duration: number;
   isPaused: boolean;
   timestamp: number;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class SettingsErrorBoundary extends React.Component<{ children: React.ReactNode }, ErrorBoundaryState> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('Settings window caught error:', error, errorInfo);
+  }
+
+  handleClose = () => {
+    getCurrentWindow().close().catch(() => {});
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="settings-window-container" style={{ padding: '24px', color: '#fff', textAlign: 'center' }}>
+          <h3 style={{ marginTop: '40px', color: '#ff6b6b' }}>設定頁面載入異常</h3>
+          <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)', margin: '16px 0' }}>
+            {this.state.error?.message || '發生未預期的渲染錯誤'}
+          </p>
+          <button
+            className="control-btn modal-action-btn"
+            style={{ margin: '0 auto', padding: '8px 24px' }}
+            onClick={this.handleClose}
+          >
+            關閉視窗
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 /**
@@ -81,14 +127,26 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // Check if current window route is the settings window using URLSearchParams
+  // Deterministic Route Branching: Check if current window route is settings
+  const isSettingsWindow = (() => {
+    try {
+      return getCurrentWindow().label === 'settings';
+    } catch {
+      return false;
+    }
+  })();
   const searchParams = new URLSearchParams(window.location.search);
   const isSettingsRoute =
+    isSettingsWindow ||
     searchParams.get('window') === 'settings' ||
     window.location.hash.includes('settings');
 
   if (isSettingsRoute) {
-    return <SettingsPage />;
+    return (
+      <SettingsErrorBoundary>
+        <SettingsPage />
+      </SettingsErrorBoundary>
+    );
   }
 
   return <MainWidgetApp />;
@@ -224,7 +282,7 @@ const MainWidgetApp: React.FC = () => {
       languageMode: activeMode,
       uiTheme: activeTheme,
       glassQuality: activeQuality,
-    });
+    }).catch((err) => console.warn('sync-settings-state broadcast warning:', err));
   };
 
   /**
@@ -325,7 +383,11 @@ const MainWidgetApp: React.FC = () => {
         localStorage.setItem('ytm_show_lyrics', 'false');
 
         // Collapse to compact mode using Math.floor
-        const headerHeight = headerEl ? (headerEl.scrollHeight > 0 ? headerEl.scrollHeight : 84) : 84;
+        const headerHeight = headerEl
+          ? (headerEl.getBoundingClientRect().height > 0
+              ? headerEl.getBoundingClientRect().height
+              : (headerEl.scrollHeight > 0 ? headerEl.scrollHeight : 60))
+          : 60;
         const physWidth = Math.floor(currentWidth * factor);
         const physHeight = Math.floor((headerHeight + 2) * factor);
 
@@ -341,7 +403,10 @@ const MainWidgetApp: React.FC = () => {
 
         // Directly restore savedExpandedHeightRef with Math.floor calculation
         const physWidth = Math.floor(currentWidth * factor);
-        const targetPhysHeight = Math.floor(savedExpandedHeightRef.current);
+        const targetPhysHeight = Math.max(
+          Math.floor(savedExpandedHeightRef.current),
+          Math.floor(170 * factor)
+        );
 
         await invoke('lock_window_height', {
           width: physWidth,
