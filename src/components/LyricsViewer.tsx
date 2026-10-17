@@ -44,6 +44,33 @@ export const LyricsViewer: React.FC<LyricsViewerProps> = React.memo(({
   const prevLyricsRef = useRef<LyricLine[]>(lyrics);
 
   /**
+   * Visual Debounce Mechanism:
+   * Protects against transition-period micro-jitter and backward twitches during CSS 0.4s animations,
+   * while guaranteeing 0ms instant response on normal forward advancement and manual seeks.
+   */
+  const [displayIndex, setDisplayIndex] = useState<number>(activeIndex);
+  const lastAdvanceTimeRef = useRef<number>(0);
+  const displayIndexRef = useRef<number>(activeIndex);
+  displayIndexRef.current = displayIndex;
+
+  useEffect(() => {
+    const cur = displayIndexRef.current;
+    if (activeIndex > cur) {
+      // 正常向前推進：0ms 立即響應，並記錄前進時間戳
+      setDisplayIndex(activeIndex);
+      lastAdvanceTimeRef.current = Date.now();
+    } else if (activeIndex < cur) {
+      const now = Date.now();
+      // 若為相鄰單行回退且距上次向前未滿 350ms（過渡動畫期間微抖動）：忽略瞬態回退
+      if (cur - activeIndex === 1 && now - lastAdvanceTimeRef.current < 350) {
+        return;
+      }
+      // 使用者主動 Seek 倒退或跨行：0ms 立即同步
+      setDisplayIndex(activeIndex);
+    }
+  }, [activeIndex]);
+
+  /**
    * Resets manual scroll state when track lyrics change and updates the centered line translation
    * in a single unified layout pass to eliminate forced double reflows.
    */
@@ -52,16 +79,18 @@ export const LyricsViewer: React.FC<LyricsViewerProps> = React.memo(({
       prevLyricsRef.current = lyrics;
       setManualOffset(0);
       setIsUserScrolling(false);
+      setDisplayIndex(activeIndex >= 0 ? activeIndex : 0);
+      lastAdvanceTimeRef.current = 0;
     }
 
     if (!lyrics || lyrics.length === 0) return;
-    const targetIdx = activeIndex >= 0 ? Math.min(activeIndex, lyrics.length - 1) : 0;
+    const targetIdx = displayIndex >= 0 ? Math.min(displayIndex, lyrics.length - 1) : 0;
     const targetEl = lineRefs.current[targetIdx];
     if (targetEl) {
       const lineCenter = targetEl.offsetTop + targetEl.offsetHeight / 2;
       setTranslateY(-lineCenter);
     }
-  }, [activeIndex, lyrics]);
+  }, [displayIndex, lyrics]);
 
   /**
    * Auto-realign lyrics vertical center when window is resized.
@@ -71,7 +100,8 @@ export const LyricsViewer: React.FC<LyricsViewerProps> = React.memo(({
     if (!container) return;
     const observer = new ResizeObserver(() => {
       if (!lyrics || lyrics.length === 0) return;
-      const targetIdx = activeIndex >= 0 ? Math.min(activeIndex, lyrics.length - 1) : 0;
+      const curIdx = displayIndexRef.current;
+      const targetIdx = curIdx >= 0 ? Math.min(curIdx, lyrics.length - 1) : 0;
       const targetEl = lineRefs.current[targetIdx];
       if (targetEl) {
         const lineCenter = targetEl.offsetTop + targetEl.offsetHeight / 2;
@@ -80,7 +110,7 @@ export const LyricsViewer: React.FC<LyricsViewerProps> = React.memo(({
     });
     observer.observe(container);
     return () => observer.disconnect();
-  }, [activeIndex, lyrics]);
+  }, [lyrics]);
 
   // Clean up auto-snap timer on unmount
   useEffect(() => {
@@ -104,7 +134,7 @@ export const LyricsViewer: React.FC<LyricsViewerProps> = React.memo(({
       const delta = -e.deltaY * 0.6;
       const nextOffset = prev + delta;
 
-      const targetIdx = activeIndex >= 0 ? Math.min(activeIndex, lyrics.length - 1) : 0;
+      const targetIdx = displayIndex >= 0 ? Math.min(displayIndex, lyrics.length - 1) : 0;
       const targetEl = lineRefs.current[targetIdx];
       const firstEl = lineRefs.current[0];
       const lastEl = lineRefs.current[lyrics.length - 1];
@@ -182,8 +212,8 @@ export const LyricsViewer: React.FC<LyricsViewerProps> = React.memo(({
         data-tauri-drag-region
       >
         {lyrics.map((line, index) => {
-          const isActive = index === activeIndex;
-          const isPast = index < activeIndex;
+          const isActive = index === displayIndex;
+          const isPast = index < displayIndex;
 
           return (
             <div

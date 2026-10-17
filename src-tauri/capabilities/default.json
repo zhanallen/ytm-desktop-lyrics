@@ -9,11 +9,18 @@
     "core:event:allow-listen",
     "core:event:allow-emit",
     "core:window:default",
+    "core:window:allow-close",
+    "core:window:allow-destroy",
     "core:window:allow-set-ignore-cursor-events",
     "core:window:allow-start-dragging",
     "core:window:allow-set-size",
     "core:window:allow-set-min-size",
     "core:window:allow-set-max-size",
-    "core:window:allow-set-position"
+    "core:window:allow-set-position",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-unminimize",
+    "core:window:allow-set-focus",
+    "core:window:allow-set-always-on-top"
   ]
 }

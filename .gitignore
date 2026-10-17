@@ -82,3 +82,9 @@ backup/
 backups/
 *.bak
 
+
+# Crash Dumps & Runtime Logs
+log/
+*.dmp
+*.DMP
+

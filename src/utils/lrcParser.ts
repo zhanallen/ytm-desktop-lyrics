@@ -7,8 +7,11 @@ export interface LyricLine {
 function sanitizeLyricText(input: string): string {
   if (!input) return '';
   return input
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/<\/?[a-zA-Z][^>]*>/g, '')
+    .slice(0, 500)
+    .replace(/<[^>]{0,256}>/g, '')
+    .replace(/[\u202A-\u202E\u2066-\u2069]/g, '')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
     .trim();
 }
 
@@ -33,11 +36,13 @@ export function parseLrc(lrcText: string): LyricLine[] {
   // Regex to extract [offset:+/-xxx]
   const offsetHeaderRegex = /^\[offset:\s*([+-]?\d+)\s*\]/i;
   // Regex to detect metadata tags like [ti:...], [ar:...], [al:...], [by:...]
-  const metaHeaderRegex = /^\[(ti|ar|al|by|length|re|ve|creator):\s*.*\]/i;
+  const metaHeaderRegex = /^\[(ti|ar|al|by|length|re|ve|creator):[^\]]{0,256}\]/i;
   // Flexible timestamp regex: matches [hh:mm:ss.xxx] or [mm:ss.xxx] or [m:ss:xx] or [mm:ss]
   const timeRegex = /\[(?:(\d{1,2}):)?(\d{1,3}):(\d{2})(?:[:\.](\d{1,3}))?\]/g;
 
   for (const line of rawLines) {
+    if (result.length >= 1000) break;
+
     const trimmed = line.trim();
     if (!trimmed) continue;
 
@@ -83,6 +88,7 @@ export function parseLrc(lrcText: string): LyricLine[] {
     // If valid text or timestamps exist
     if (timestamps.length > 0) {
       for (const t of timestamps) {
+        if (result.length >= 1000) break;
         // Apply internal file offset (convert ms to seconds)
         const finalTime = Math.max(0, t + internalOffsetMs / 1000);
         result.push({ time: finalTime, text: text || '♪' });
@@ -98,7 +104,11 @@ export function parseLrc(lrcText: string): LyricLine[] {
 /**
  * Finds the active lyric line index given current time (in seconds) using O(log N) binary search.
  */
-export function getActiveLyricIndex(lyrics: LyricLine[], currentTime: number, offset: number = 0): number {
+export function getActiveLyricIndex(
+  lyrics: LyricLine[],
+  currentTime: number,
+  offset: number = 0
+): number {
   if (!lyrics || lyrics.length === 0) return -1;
 
   const adjustedTime = currentTime + offset;
@@ -110,7 +120,7 @@ export function getActiveLyricIndex(lyrics: LyricLine[], currentTime: number, of
   let result = 0;
 
   while (low <= high) {
-    const mid = (low + high) >> 1;
+    const mid = Math.floor((low + high) / 2);
     if (lyrics[mid].time <= adjustedTime) {
       result = mid;
       low = mid + 1;

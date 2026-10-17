@@ -4938,7 +4938,7 @@ dependencies = [
 
 [[package]]
 name = "ytm-desktop-lyrics"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "futures-util",
  "serde",
@@ -4949,6 +4949,7 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tokio",
  "tokio-tungstenite",
+ "windows",
  "windows-sys 0.59.0",
 ]
 

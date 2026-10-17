@@ -1,6 +1,6 @@
 [package]
 name = "ytm-desktop-lyrics"
-version = "1.2.1"
+version = "1.2.2"
 description = "YTM Desktop Lyrics Widget"
 authors = ["Antigravity"]
 edition = "2021"
@@ -24,5 +24,17 @@ windows-sys = { version = "0.59", features = [
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_Shell",
     "Win32_UI_HiDpi",
-    "Win32_Graphics_Gdi"
+    "Win32_Graphics_Gdi",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_ProcessStatus"
+] }
+windows = { version = "0.61", features = [
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Gdi",
+    "Win32_Foundation"
 ] }

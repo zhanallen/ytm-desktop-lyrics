@@ -1,6 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { memoryManager } from '../services/memoryManager';
 
 export interface LiquidGlassPreset {
   ior: number;          // Refractive index (default 1.25)
@@ -17,18 +19,110 @@ export interface LiquidGlassPreset {
   smink: number;        // Fluid metaball fusion distance (default 28.0)
 }
 
+/**
+ * 預設液態玻璃 (Liquid Glass) 光學材質預設參數
+ * 依據 Apple iOS 26 Liquid Glass 設計規範與 Snell 折射、柯西色散物理光學模型建立。
+ * 修改各參數將對即時著色器渲染產生以下視覺影響：
+ */
 const DEFAULT_PRESET: LiquidGlassPreset = {
+  /**
+   * 折射率 (Index of Refraction, IOR) - 建議範圍: -2.5 ~ 0.0 (或正折射 1.0 ~ 2.0)
+   * 數值影響：
+   * - 絕對值愈大 (如 -1.8, -2.5)：邊框四周背景的透鏡扭曲與位移感愈劇烈，產生更強烈的凸透鏡向內折射凝聚效果。
+   * - 絕對值愈小 (如 -0.5, 0.0)：折射效果愈弱，趨近於無折射的完全平直平面玻璃。
+   * - 負數 (-1.3)：為 Apple Liquid Glass 的招牌內凹凝聚折射（將邊緣背景向內拉近）。
+   */
   ior: -1.3,
-  dispersion: 1.25,
+
+  /**
+   * 柯西色散係數 (Chromatic Dispersion) - 建議範圍: 0.0 ~ 3.0
+   * 數值影響：
+   * - 數值愈大 (如 1.5 ~ 2.5)：光線穿過邊緣稜鏡時，紅(R)、綠(G)、藍(B) 分離得愈開，邊界呈現如同鑽石稜鏡般的彩虹霓光。
+   * - 數值愈小 (如 0.0 ~ 0.5)：色散效果減弱；設為 0.0 則完全消除色差，呈現單色純淨折射。
+   */
+  dispersion: 1.5,
+
+  /**
+   * 物理玻璃厚度 (Physical Thickness, px) - 建議範圍: 5.0 ~ 50.0
+   * 數值影響：
+   * - 與 IOR 共同決定折射總光程位移量。
+   * - 數值愈大 (如 35.0, 50.0)：玻璃在視覺上感覺愈厚重、深邃，折射投影位移更寬。
+   * - 數值愈小 (如 10.0, 15.0)：玻璃看起來極致輕薄，折射變形僅緊貼於邊緣一圈。
+   */
   thickness: 25.0,
+
+  /**
+   * 超橢圓幾何指數 (Squircle Exponent) - 建議值: 1 (對齊 Apple 方圓角標準)
+   * 數值影響：
+   * - 控制卡片四周角落的超橢圓連續曲率平滑度，保持 C^∞ 連續曲率過渡。
+   */
   squircleExp: 1,
-  roughness: 0.15,
+
+  /**
+   * 磨砂表面粗糙度 / 模糊程度 (Frosted Roughness) - 建議範圍: 0.01 ~ 0.3
+   * 數值影響：
+   * - 控制 8-Tap Poisson Disk 採樣的模糊擴散半徑 (blurPix = roughness * 45.0 * dpr)。
+   * - 數值極小 (如 0.01 ~ 0.03)：表面光滑如水晶，背景文字與細線條近乎 1:1 清晰可見。
+   * - 數值較大 (如 0.1 ~ 0.25)：產生濃郁的霧面毛玻璃磨砂效果，背景細節被完全打散，抗干擾與隱私感提高。
+   */
+  roughness: 0.03,
+
+  /**
+   * 邊緣外框立體斜角寬度 (Perimeter Bevel Width, px) - 建議範圍: 1.5 ~ 8.0
+   * 數值影響：
+   * - 定義玻璃外圈斜切倒角 (Bevel) 的物理寬度。
+   * - 數值愈大 (如 5.0 ~ 8.0)：邊界斜角斜面愈寬，弧面反光與色散折射的受光帶愈寬闊大氣。
+   * - 數值愈小 (如 1.5 ~ 2.5)：斜角極為細膩窄窄一圈，外觀俐落現代。
+   */
   bevelWidth: 3.5,
-  rimIntensity: 0.45,
+
+  /**
+   * 雙光源邊緣高光強度 (Specular Rim Intensity) - 建議範圍: 0.1 ~ 1.2
+   * 數值影響：
+   * - 控制主光、副光與菲涅耳反射 (Fresnel) 的發光亮度。
+   * - 數值愈高 (如 0.7 ~ 1.0)：邊框高光熠熠生輝，如同鍍有高反光的亮銀金屬邊框或強光照射下的拋光玻璃。
+   * - 數值愈低 (如 0.1 ~ 0.3)：高光收斂柔和，顯得內斂低調。
+   */
+  rimIntensity: 0.55,
+
+  /**
+   * 主光源入射角度 (Key Light Angle, 角度 0° ~ 360°) - 建議值: 135.0
+   * 數值影響：
+   * - 135.0° 代表主光源自左上方 (Top-Left) 射入，同時在對角線 315° (右下方) 自動生成柔和副補光。
+   * - 調整角度 (如 45°, 90°, 225°) 可以旋轉整體受光面的方位。
+   */
   lightAngle: 135.0,
-  saturation: 1.0,
-  tintOpacity: 0.35,
-  tintColor: '#00050a',
+
+  /**
+   * 色彩飽和度倍率 (Color Saturation Factor) - 建議範圍: 0.8 ~ 1.5
+   * 數值影響：
+   * - 數值 > 1.0 (如 1.05 ~ 1.2)：穿透背景色彩更加鮮活飽和，彌補磨砂與染色造成的發灰發暗。
+   * - 數值 < 1.0 (如 0.5 ~ 0.8)：色彩淡化柔和；設為 0.0 則變成黑白灰階磨砂。
+   */
+  saturation: 1.05,
+
+  /**
+   * 玻璃染色不透明度 (Tint Opacity) - 建議範圍: 0.0 ~ 0.8
+   * 數值影響：
+   * - 控制染色層 (`tintColor`) 覆蓋的深淺程度。
+   * - 數值愈高 (如 0.5 ~ 0.7)：玻璃本體顏色越濃重（底色遮蓋度高，背景更暗沉）。
+   * - 數值愈低 (如 0.0 ~ 0.2)：玻璃越通透，越貼近原生背景色彩。
+   */
+  tintOpacity: 0.10,
+
+  /**
+   * 玻璃自定義底色 (Base Tint Color, Hex)
+   * 數值影響：
+   * - 預設 '#00050a' 搭配 tintOpacity 營造出如黑曜石般的高級深邃暗色玻璃質感。
+   * - 若改為其他顏色（如深邃寶藍 '#000b18'、翡翠紫黑 '#0b0014'），可賦予玻璃獨特的環境氛圍。
+   */
+  tintColor: '#0F1F2F',
+
+  /**
+   * 幾何收縮與邊緣過渡係數 (Smink Factor) - 預設: 28.0
+   * 數值影響：
+   * - 供預設參數模型相容擴充之幾何平滑與收縮係數。
+   */
   smink: 28.0,
 };
 
@@ -195,7 +289,8 @@ void main() {
     vec2 px = gl_FragCoord.xy;
     vec2 p0 = px - u_pos0;
     vec2 cardSize = u_res * 0.5;
-    float cornerRadius = clamp(min(u_res.x, u_res.y) * 0.06, 6.0 * u_dpr, 12.0 * u_dpr);
+    // Maintain consistent, non-deforming 16px Apple-style large corner radius
+    float cornerRadius = min(16.0 * u_dpr, min(cardSize.x, cardSize.y));
     float d = sdRoundBox(p0, cardSize, cornerRadius);
     float aa = max(fwidth(d), 0.75 * u_dpr);
 
@@ -406,6 +501,9 @@ export const LiquidGlassCanvas: React.FC<LiquidGlassCanvasProps> = React.memo(({
   const lastMovedTimeRef = useRef<number>(0);
   const needsRedrawRef = useRef<boolean>(true);
   const wakeRenderLoopRef = useRef<(() => void) | null>(null);
+  const pendingFrameRef = useRef<ArrayBuffer | null>(null);
+  const staticFramesCountRef = useRef<number>(0);
+  const lastFrameTimeRef = useRef<number>(performance.now());
 
   // Dynamic Uniform Synchronizer: Zero WebGL Re-compilation Architecture
   const presetRef = useRef<LiquidGlassPreset>(DEFAULT_PRESET);
@@ -423,6 +521,20 @@ export const LiquidGlassCanvas: React.FC<LiquidGlassCanvasProps> = React.memo(({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    const syncWatchRectFnRef = { current: null as (() => void) | null };
+
+    getCurrentWindow()
+      .outerPosition()
+      .then((pos) => {
+        if (pos && isMounted) {
+          currentPosRef.current = { x: pos.x, y: pos.y };
+          if (syncWatchRectFnRef.current) {
+            syncWatchRectFnRef.current();
+          }
+        }
+      })
+      .catch(() => {});
+
     let cleanupCurrentGL: (() => void) | null = null;
     let isContextLost = false;
 
@@ -437,7 +549,12 @@ export const LiquidGlassCanvas: React.FC<LiquidGlassCanvasProps> = React.memo(({
       });
 
       if (!gl) {
-        console.error('[LiquidGlass] WebGL 2.0 context is not available.');
+        console.error('[LiquidGlass] WebGL 2.0 context is not available. Retrying in 500ms...');
+        setTimeout(() => {
+          if (isMounted && !isContextLost) {
+            setupWebGL();
+          }
+        }, 500);
         return;
       }
 
@@ -525,15 +642,101 @@ export const LiquidGlassCanvas: React.FC<LiquidGlassCanvasProps> = React.memo(({
         new Uint8Array([20, 24, 36, 255])
       );
 
+      let isCurrentGLActive = true;
+      let isWindowMinimized = false;
       const lastTexWRef = { current: 0 };
       const lastTexHRef = { current: 0 };
 
-      // Ultra-fast zero-copy binary desktop screen capture poll with direct GPU texture upload
+      let idleGcTimer: number | null = null;
+      const scheduleIdleGcCheck = () => {
+        if (idleGcTimer !== null) {
+          clearTimeout(idleGcTimer);
+        }
+        idleGcTimer = window.setTimeout(() => {
+          if (!isCurrentGLActive || !isMounted) return;
+          const elapsed = performance.now() - lastFrameTimeRef.current;
+          if (elapsed >= 3000) {
+            memoryManager.triggerProactiveGc('periodic-idle');
+          }
+        }, 3050);
+      };
+
+      // Process incoming binary frame from WebSocket or fallback invoke
+      const processBinaryDesktopFrame = (buffer: ArrayBuffer, byteOffset: number, byteLength: number) => {
+        // 1-byte UNCHANGED bypass signal (or <= 32 bytes header):
+        // Desktop background unchanged -> skip WebGL upload & redraw to drop CPU to 0%
+        if (byteLength <= 32) {
+          return;
+        }
+
+        let view: DataView | null = new DataView(buffer, byteOffset, byteLength);
+        const winW = view.getUint32(0, true);
+        const winH = view.getUint32(4, true);
+        const winX = view.getInt32(8, true);
+        const winY = view.getInt32(12, true);
+        const padding = view.getUint32(16, true);
+        const capturedTs = view.getFloat64(20, true);
+        const rawTexW = view.getUint16(28, true);
+        const rawTexH = view.getUint16(30, true);
+        view = null;
+
+        const texW = rawTexW > 0 ? rawTexW : Math.max(winW + padding * 2, 1);
+        const texH = rawTexH > 0 ? rawTexH : Math.max(winH + padding * 2, 1);
+
+        const pixelByteLen = byteLength - 32;
+        const expectedByteLen = texW * texH * 4;
+
+        if (pixelByteLen < expectedByteLen) {
+          return;
+        }
+
+        let pixels: Uint8Array | null = new Uint8Array(buffer, byteOffset + 32, expectedByteLen);
+
+        if (capturedTs > 0) {
+          const e2eLatency = Date.now() - capturedTs;
+          (window as any).__YTM_LAST_LATENCY_MS__ = e2eLatency;
+          capturedPosRef.current = { x: winX, y: winY, w: winW, h: winH, padding };
+          if (!isMovingRef.current && !isDraggingRef.current) {
+            currentPosRef.current = { x: winX, y: winY };
+          }
+        }
+
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+
+        if (lastTexWRef.current !== texW || lastTexHRef.current !== texH) {
+          lastTexWRef.current = texW;
+          lastTexHRef.current = texH;
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, texW, texH, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+        } else {
+          gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, texW, texH, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+        }
+
+        // ArrayBuffer Memory Hygiene: Immediately release temporary typed arrays and buffer references
+        pixels = null;
+
+        // Track time since last desktop frame & schedule static idle GC check
+        lastFrameTimeRef.current = performance.now();
+        scheduleIdleGcCheck();
+
+        hasTextureRef.current = true;
+        needsRedrawRef.current = true;
+        wakeRenderLoop();
+      };
+
+      // Desktop capture via native Tauri IPC
       const updateDesktopTexture = async () => {
-        if (!isMounted || isCapturingRef.current || isContextLost || document.hidden || isDraggingRef.current) return;
-        isCapturingRef.current = true;
+        if (!isMounted || !canvas || isContextLost || document.hidden || isDraggingRef.current) return;
         try {
-          const rawPayload = await invoke<any>('capture_desktop_background');
+          const dpr = window.devicePixelRatio || 1;
+          const physWidth = Math.max(Math.round((canvas.clientWidth || 300) * dpr), 1);
+          const physHeight = Math.max(Math.round((canvas.clientHeight || 200) * dpr), 1);
+
+          const rawPayload = await invoke<any>('capture_desktop_background', {
+            x: currentPosRef.current.x,
+            y: currentPosRef.current.y,
+            width: physWidth,
+            height: physHeight,
+          });
           if (!isMounted || !rawPayload || isContextLost) return;
 
           let buffer: ArrayBuffer;
@@ -557,77 +760,145 @@ export const LiquidGlassCanvas: React.FC<LiquidGlassCanvasProps> = React.memo(({
             return;
           }
 
-          if (byteLength > 32) {
-            const view = new DataView(buffer, byteOffset, byteLength);
-            const winW = view.getUint32(0, true);
-            const winH = view.getUint32(4, true);
-            const winX = view.getInt32(8, true);
-            const winY = view.getInt32(12, true);
-            const padding = view.getUint32(16, true);
-            const capturedTs = view.getFloat64(20, true);
-            const pixels = new Uint8Array(buffer, byteOffset + 32, byteLength - 32);
-
-            const texWidth = Math.max(winW + padding * 2, 1);
-            const texHeight = Math.max(winH + padding * 2, 1);
-
-            if (capturedTs > 0) {
-              const e2eLatency = Date.now() - capturedTs;
-              (window as any).__YTM_LAST_LATENCY_MS__ = e2eLatency;
-              capturedPosRef.current = { x: winX, y: winY, w: winW, h: winH, padding };
-              if (!isMovingRef.current && !isDraggingRef.current) {
-                currentPosRef.current = { x: winX, y: winY };
-              }
-            }
-
-            gl.bindTexture(gl.TEXTURE_2D, texture);
-
-            if (lastTexWRef.current !== texWidth || lastTexHRef.current !== texHeight) {
-              lastTexWRef.current = texWidth;
-              lastTexHRef.current = texHeight;
-              gl.texImage2D(
-                gl.TEXTURE_2D,
-                0,
-                gl.RGBA,
-                texWidth,
-                texHeight,
-                0,
-                gl.RGBA,
-                gl.UNSIGNED_BYTE,
-                pixels
-              );
-            } else {
-              gl.texSubImage2D(
-                gl.TEXTURE_2D,
-                0,
-                0,
-                0,
-                texWidth,
-                texHeight,
-                gl.RGBA,
-                gl.UNSIGNED_BYTE,
-                pixels
-              );
-            }
-
-            hasTextureRef.current = true;
-            needsRedrawRef.current = true;
-            wakeRenderLoop();
+          if (byteLength <= 32) {
+            return;
           }
+
+          processBinaryDesktopFrame(buffer, byteOffset, byteLength);
+          wakeRenderLoop();
         } catch (err) {
-          // Normal when window is actively moving (bypassed in Rust)
-        } finally {
-          isCapturingRef.current = false;
+          console.error('[LiquidGlass] updateDesktopTexture error:', err);
         }
       };
 
+      // High-speed WebSocket binary channel with proactive DWM Push streaming
+      let glassWs: WebSocket | null = null;
+      let isWsConnected = false;
+
+      const sendWatchRect = (x: number, y: number, w: number, h: number) => {
+        if (!glassWs || glassWs.readyState !== WebSocket.OPEN) return;
+        const buf = new ArrayBuffer(17);
+        const view = new DataView(buf);
+        view.setUint8(0, 0x01); // CMD_WATCH
+        view.setInt32(1, x, true);
+        view.setInt32(5, y, true);
+        view.setInt32(9, w, true);
+        view.setInt32(13, h, true);
+        glassWs.send(buf);
+      };
+
+      const syncCurrentWatchRect = () => {
+        const dpr = window.devicePixelRatio || 1;
+        const physW = Math.max(Math.round((canvas.clientWidth || 300) * dpr), 1);
+        const physH = Math.max(Math.round((canvas.clientHeight || 200) * dpr), 1);
+        sendWatchRect(currentPosRef.current.x, currentPosRef.current.y, physW, physH);
+      };
+
+      syncWatchRectFnRef.current = syncCurrentWatchRect;
+
+      const connectGlassWs = async () => {
+        try {
+          const auth = await invoke<{
+            token: string;
+            port: number;
+            x?: number;
+            y?: number;
+            w?: number;
+            h?: number;
+          }>('get_glass_ws_auth');
+          if (!isCurrentGLActive || !isMounted || isContextLost) return;
+
+          if (typeof auth.x === 'number' && typeof auth.y === 'number' && (auth.x !== 0 || auth.y !== 0)) {
+            currentPosRef.current = { x: auth.x, y: auth.y };
+            capturedPosRef.current = {
+              x: auth.x,
+              y: auth.y,
+              w: auth.w || capturedPosRef.current.w,
+              h: auth.h || capturedPosRef.current.h,
+              padding: 64,
+            };
+          }
+
+          const wsUrl = `ws://127.0.0.1:${auth.port}?token=${encodeURIComponent(auth.token)}&role=glass`;
+          const ws = new WebSocket(wsUrl);
+          ws.binaryType = 'arraybuffer';
+
+          ws.onopen = async () => {
+            if (!isCurrentGLActive) {
+              ws.close();
+              return;
+            }
+            isWsConnected = true;
+            try {
+              const pos = await getCurrentWindow().outerPosition();
+              if (pos && (pos.x !== 0 || pos.y !== 0)) {
+                currentPosRef.current = { x: pos.x, y: pos.y };
+              }
+            } catch {}
+            syncCurrentWatchRect();
+          };
+
+          ws.onmessage = (event) => {
+            if (!isCurrentGLActive || isContextLost) return;
+            isCaptureInProgress = false;
+
+            if (event.data instanceof ArrayBuffer) {
+              if (event.data.byteLength <= 32) {
+                return;
+              }
+              perfCaptureCount++;
+              perfFrameCount++;
+              const nowCalc = performance.now();
+              if (nowCalc - perfLastFpsCalcTime >= 1000) {
+                perfCurrentFps = (perfFrameCount * 1000) / (nowCalc - perfLastFpsCalcTime);
+                perfFrameCount = 0;
+                perfLastFpsCalcTime = nowCalc;
+              }
+              // rAF-Gated Buffer: overwrite pending frame, never upload directly on WS event!
+              pendingFrameRef.current = event.data;
+              wakeRenderLoop();
+            }
+          };
+
+          ws.onclose = () => {
+            isWsConnected = false;
+            glassWs = null;
+            if (isCurrentGLActive && isMounted && !isContextLost) {
+              setTimeout(() => {
+                if (isCurrentGLActive && isMounted && !isContextLost && !glassWs) {
+                  connectGlassWs();
+                }
+              }, 1000);
+            }
+          };
+
+          ws.onerror = () => {
+            isWsConnected = false;
+          };
+
+          glassWs = ws;
+        } catch {
+          isWsConnected = false;
+        }
+      };
+
+      connectGlassWs();
+
       const requestRender = () => {
         if (!canvas || !isMounted || isContextLost) return;
+
+        // rAF-Gated Texture Upload: drain pending frame buffer before shader draw
+        if (pendingFrameRef.current) {
+          const frame = pendingFrameRef.current;
+          pendingFrameRef.current = null;
+          processBinaryDesktopFrame(frame, 0, frame.byteLength);
+        }
         const currentPreset = presetRef.current;
         const dpr = window.devicePixelRatio || 1;
         const cssWidth = canvas.clientWidth || 300;
         const cssHeight = canvas.clientHeight || 200;
-        const physWidth = Math.round(cssWidth * dpr);
-        const physHeight = Math.round(cssHeight * dpr);
+        const physWidth = Math.max(Math.round(cssWidth * dpr), 1);
+        const physHeight = Math.max(Math.round(cssHeight * dpr), 1);
 
         if (canvas.width !== physWidth || canvas.height !== physHeight) {
           canvas.width = physWidth;
@@ -660,7 +931,7 @@ export const LiquidGlassCanvas: React.FC<LiquidGlassCanvasProps> = React.memo(({
         // Calculate Physical Screen-Space Window Motion Offset (Bounded by Overscan Buffer)
         let offX = 0;
         let offY = 0;
-        if (currentPosRef.current.x !== 0 && capturedPosRef.current.x !== 0) {
+        if (capturedPosRef.current.w > 0) {
           const pad = (capturedPosRef.current.padding || 64) - 2;
           const rawDx = currentPosRef.current.x - capturedPosRef.current.x;
           const rawDy = currentPosRef.current.y - capturedPosRef.current.y;
@@ -681,7 +952,6 @@ export const LiquidGlassCanvas: React.FC<LiquidGlassCanvasProps> = React.memo(({
       };
 
       let isRunning = true;
-      const TARGET_FRAME_DURATION_MS = 1000 / 30; // 33.3333ms
       let lastCaptureTime = performance.now();
       let captureRafId: number | null = null;
       let isCaptureInProgress = false;
@@ -693,9 +963,9 @@ export const LiquidGlassCanvas: React.FC<LiquidGlassCanvasProps> = React.memo(({
       let perfAvgCaptureTimeMs = 0;
       let perfCaptureCount = 0;
 
-      // High-precision VSync-aligned requestAnimationFrame 30.0 FPS capture scheduler
+      // High-precision VSync-aligned requestAnimationFrame capture scheduler (Adaptive 20 FPS -> 5 FPS)
       const runPrecisionCaptureLoop = (now: number) => {
-        if (!isRunning || !isMounted || isContextLost || document.hidden) {
+        if (!isRunning || !isMounted || isContextLost || document.hidden || isWindowMinimized) {
           captureRafId = null;
           return;
         }
@@ -707,8 +977,10 @@ export const LiquidGlassCanvas: React.FC<LiquidGlassCanvasProps> = React.memo(({
 
         const elapsed = now - lastCaptureTime;
 
-        if (elapsed >= TARGET_FRAME_DURATION_MS && !isCaptureInProgress) {
-          lastCaptureTime = now - (elapsed % TARGET_FRAME_DURATION_MS);
+        // When WebSocket push stream is active, backend proactively pushes frames.
+        // Fallback polling is only active when WebSocket is disconnected (fixed 33.3ms, never 200ms).
+        if (!isWsConnected && elapsed >= 33.3 && !isCaptureInProgress) {
+          lastCaptureTime = now;
           isCaptureInProgress = true;
           const startCap = performance.now();
 
@@ -726,15 +998,7 @@ export const LiquidGlassCanvas: React.FC<LiquidGlassCanvasProps> = React.memo(({
                 perfFrameCount = 0;
                 perfLastFpsCalcTime = nowCalc;
               }
-
-              if (window.__YTM_BENCHMARK_COLLECTOR__) {
-                window.__YTM_BENCHMARK_COLLECTOR__(
-                  capDur,
-                  window.__YTM_LAST_LATENCY_MS__ || 0
-                );
-              }
             })
-            .catch(() => {})
             .finally(() => {
               isCaptureInProgress = false;
             });
@@ -744,8 +1008,8 @@ export const LiquidGlassCanvas: React.FC<LiquidGlassCanvasProps> = React.memo(({
       };
 
       const startCaptureLoop = () => {
-        if (!captureRafId) {
-          lastCaptureTime = performance.now() - TARGET_FRAME_DURATION_MS;
+        if (!captureRafId && isRunning && isMounted && !isContextLost && !document.hidden && !isWindowMinimized) {
+          lastCaptureTime = performance.now();
           captureRafId = requestAnimationFrame(runPrecisionCaptureLoop);
         }
       };
@@ -858,7 +1122,7 @@ export const LiquidGlassCanvas: React.FC<LiquidGlassCanvasProps> = React.memo(({
       };
 
       const loop = (now: number) => {
-        if (!isRunning || !isMounted || isContextLost || document.hidden) {
+        if (!isRunning || !isMounted || isContextLost || document.hidden || isWindowMinimized) {
           animFrameIdRef.current = null;
           return;
         }
@@ -892,6 +1156,7 @@ export const LiquidGlassCanvas: React.FC<LiquidGlassCanvasProps> = React.memo(({
           isTransitioning;
 
         if (isMoving) {
+          staticFramesCountRef.current = 0;
           // Window is in motion: render at full screen refresh rate (60/120/144 FPS) with motion offset extrapolation
           requestRender();
           animFrameIdRef.current = requestAnimationFrame(loop);
@@ -900,14 +1165,20 @@ export const LiquidGlassCanvas: React.FC<LiquidGlassCanvasProps> = React.memo(({
           if (needsRedrawRef.current) {
             requestRender();
           }
-          // Window is static: pause rAF loop until next frame arrival or window movement
+          // Window is static: trigger proactive minor GC if static for > 3 seconds or periodic
+          staticFramesCountRef.current++;
+          const elapsed = performance.now() - lastFrameTimeRef.current;
+          if (elapsed >= 3000 || staticFramesCountRef.current === 5 || staticFramesCountRef.current % 120 === 0) {
+            memoryManager.triggerProactiveGc('periodic-idle');
+          }
+          // Pause rAF loop until next frame arrival or window movement
           animFrameIdRef.current = null;
         }
       };
 
       const wakeRenderLoop = () => {
         needsRedrawRef.current = true;
-        if (!animFrameIdRef.current && isRunning && isMounted && !isContextLost && !document.hidden) {
+        if (!animFrameIdRef.current && isRunning && isMounted && !isContextLost && !document.hidden && !isWindowMinimized) {
           animFrameIdRef.current = requestAnimationFrame(loop);
         }
       };
@@ -925,19 +1196,43 @@ export const LiquidGlassCanvas: React.FC<LiquidGlassCanvasProps> = React.memo(({
       wakeRenderLoop();
       startCaptureLoop();
 
-      const handleVisibilityChange = () => {
-        if (document.hidden) {
+      const updateVisibilityAndMinimizeState = async () => {
+        if (!isCurrentGLActive || !isMounted) return;
+        try {
+          isWindowMinimized = await getCurrentWindow().isMinimized();
+        } catch {}
+
+        const isSuspended = document.hidden || isWindowMinimized;
+        if (isSuspended) {
           stopLoop();
           stopCaptureLoop();
+          memoryManager.triggerProactiveGc('periodic-idle');
         } else {
           wakeRenderLoop();
           startCaptureLoop();
         }
       };
 
-      document.addEventListener('visibilitychange', handleVisibilityChange);
+      document.addEventListener('visibilitychange', updateVisibilityAndMinimizeState);
+      window.addEventListener('focus', updateVisibilityAndMinimizeState);
+      window.addEventListener('blur', updateVisibilityAndMinimizeState);
 
-      let isCurrentGLActive = true;
+      let unlistenResize: (() => void) | null = null;
+      getCurrentWindow()
+        .onResized(() => {
+          updateVisibilityAndMinimizeState();
+        })
+        .then((unlisten) => {
+          if (!isCurrentGLActive) {
+            unlisten();
+          } else {
+            unlistenResize = unlisten;
+          }
+        })
+        .catch(() => {});
+
+      updateVisibilityAndMinimizeState();
+
       let unlistenMoved: (() => void) | null = null;
       let unlistenDragStarted: (() => void) | null = null;
       let unlistenDragEnded: (() => void) | null = null;
@@ -963,6 +1258,7 @@ export const LiquidGlassCanvas: React.FC<LiquidGlassCanvasProps> = React.memo(({
         }
         isMovingRef.current = true;
         lastMovedTimeRef.current = performance.now();
+        syncCurrentWatchRect();
         wakeRenderLoop();
       }).then((unlisten) => {
         if (!isCurrentGLActive) {
@@ -995,22 +1291,46 @@ export const LiquidGlassCanvas: React.FC<LiquidGlassCanvasProps> = React.memo(({
         isMovingRef.current = false;
         lastMovedTimeRef.current = 0;
         wakeRenderLoop();
-        updateDesktopTexture()
-          .then(() => {
-            if (!isCurrentGLActive) return;
-            targetBlackTransitionRef.current = 0.0;
-            wakeRenderLoop();
-          })
-          .catch((_err) => {
-            if (!isCurrentGLActive) return;
-            targetBlackTransitionRef.current = 0.0;
-            wakeRenderLoop();
-          })
-          .finally(() => {
-            if (isCurrentGLActive) {
-              startCaptureLoop();
+
+        getCurrentWindow()
+          .outerPosition()
+          .then((pos) => {
+            if (pos) {
+              currentPosRef.current = { x: pos.x, y: pos.y };
+              syncCurrentWatchRect();
             }
-          });
+          })
+          .catch(() => {});
+
+        syncCurrentWatchRect();
+        targetBlackTransitionRef.current = 0.0;
+        wakeRenderLoop();
+
+        setTimeout(() => {
+          if (!isCurrentGLActive) return;
+          targetBlackTransitionRef.current = 0.0;
+          wakeRenderLoop();
+          updateDesktopTexture().catch(() => {});
+        }, 60);
+
+        if (!isWsConnected) {
+          updateDesktopTexture()
+            .then(() => {
+              if (!isCurrentGLActive) return;
+              targetBlackTransitionRef.current = 0.0;
+              wakeRenderLoop();
+            })
+            .catch(() => {
+              if (!isCurrentGLActive) return;
+              targetBlackTransitionRef.current = 0.0;
+              wakeRenderLoop();
+            })
+            .finally(() => {
+              if (isCurrentGLActive) {
+                startCaptureLoop();
+              }
+            });
+        }
       }).then((unlisten) => {
         if (!isCurrentGLActive) {
           unlisten();
@@ -1022,13 +1342,33 @@ export const LiquidGlassCanvas: React.FC<LiquidGlassCanvasProps> = React.memo(({
       cleanupCurrentGL = () => {
         isCurrentGLActive = false;
         isRunning = false;
+        pendingFrameRef.current = null;
+        staticFramesCountRef.current = 0;
         stopLoop();
         stopCaptureLoop();
+        if (glassWs) {
+          try {
+            glassWs.close();
+          } catch {}
+          glassWs = null;
+          isWsConnected = false;
+        }
+        syncWatchRectFnRef.current = null;
         delete window.__YTM_PERF_STATS__;
         delete window.__runYtmFpsBenchmark;
         delete window.__YTM_BENCHMARK_COLLECTOR__;
         wakeRenderLoopRef.current = null;
-        document.removeEventListener('visibilitychange', handleVisibilityChange);
+        if (idleGcTimer !== null) {
+          clearTimeout(idleGcTimer);
+          idleGcTimer = null;
+        }
+        document.removeEventListener('visibilitychange', updateVisibilityAndMinimizeState);
+        window.removeEventListener('focus', updateVisibilityAndMinimizeState);
+        window.removeEventListener('blur', updateVisibilityAndMinimizeState);
+        if (unlistenResize) {
+          unlistenResize();
+          unlistenResize = null;
+        }
         if (unlistenMoved) {
           unlistenMoved();
           unlistenMoved = null;
@@ -1049,6 +1389,13 @@ export const LiquidGlassCanvas: React.FC<LiquidGlassCanvasProps> = React.memo(({
           gl.deleteShader(vs);
           gl.deleteShader(fs);
         } catch (e) {}
+
+        invoke('trim_memory').catch(() => {});
+        if (typeof (window as any).gc === 'function') {
+          try {
+            (window as any).gc();
+          } catch {}
+        }
       };
     };
 
@@ -1066,7 +1413,11 @@ export const LiquidGlassCanvas: React.FC<LiquidGlassCanvasProps> = React.memo(({
       console.log('[LiquidGlass] WebGL context restored.');
       isContextLost = false;
       hasTextureRef.current = false;
-      setupWebGL();
+      setTimeout(() => {
+        if (isMounted) {
+          setupWebGL();
+        }
+      }, 150);
     };
 
     canvas.addEventListener('webglcontextlost', handleContextLost, false);
@@ -1080,6 +1431,12 @@ export const LiquidGlassCanvas: React.FC<LiquidGlassCanvasProps> = React.memo(({
       canvas.removeEventListener('webglcontextrestored', handleContextRestored, false);
       if (cleanupCurrentGL) {
         cleanupCurrentGL();
+      }
+      invoke('trim_memory').catch(() => {});
+      if (typeof (window as any).gc === 'function') {
+        try {
+          (window as any).gc();
+        } catch {}
       }
     };
   }, []); // Initialized ONCE on mount: Zero Shader Re-compilation Overhead!

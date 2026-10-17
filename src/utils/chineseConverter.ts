@@ -4,7 +4,7 @@ let s2twConverter: ConverterFn | null = null;
 let t2sConverter: ConverterFn | null = null;
 let loadPromise: Promise<void> | null = null;
 
-const MAX_CACHE_SIZE = 1000;
+const MAX_CACHE_SIZE = 50;
 const s2twCache = new Map<string, string>();
 const t2sCache = new Map<string, string>();
 
@@ -89,8 +89,8 @@ export function toSimplified(text: string): string {
  */
 export function countTraditionalFeatures(text: string): number {
   if (!text) return 0;
-  // Common Traditional Chinese exclusive characters
-  const tradRegex = /[體國簡發後經對會這嗎還當點個頭開車買寫親關樂義畫動愛無話愛學聽難舊雙讓應轉聲樣優體歷幾與後點禮顏懷聲傷變]/g;
+  // Common Traditional Chinese exclusive characters (deduplicated)
+  const tradRegex = /[體國簡發後經對會這嗎還當點個頭開車買寫親關樂義畫動愛無話學聽難舊雙讓應轉聲樣優歷幾與禮顏懷傷變]/g;
   const matches = text.match(tradRegex);
   return matches ? matches.length : 0;
 }
