@@ -1,0 +1,11 @@
+#!/bin/sh
+# .githooks/pre-push: Prevent accidental direct pushes to main/master
+current_branch=$(git rev-parse --abbrev-ref HEAD)
+
+if [ "$current_branch" = "main" ] || [ "$current_branch" = "master" ]; then
+    echo "❌ [SECURITY ERROR] Direct push to '$current_branch' is forbidden by repository governance!"
+    echo "👉 Please push to a feature branch ('git checkout -b feat/<name>') and open a Pull Request."
+    exit 1
+fi
+
+exit 0

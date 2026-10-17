@@ -104,7 +104,11 @@ export function parseLrc(lrcText: string): LyricLine[] {
 /**
  * Finds the active lyric line index given current time (in seconds) using O(log N) binary search.
  */
-export function getActiveLyricIndex(lyrics: LyricLine[], currentTime: number, offset: number = 0): number {
+export function getActiveLyricIndex(
+  lyrics: LyricLine[],
+  currentTime: number,
+  offset: number = 0
+): number {
   if (!lyrics || lyrics.length === 0) return -1;
 
   const adjustedTime = currentTime + offset;
@@ -116,7 +120,7 @@ export function getActiveLyricIndex(lyrics: LyricLine[], currentTime: number, of
   let result = 0;
 
   while (low <= high) {
-    const mid = (low + high) >> 1;
+    const mid = Math.floor((low + high) / 2);
     if (lyrics[mid].time <= adjustedTime) {
       result = mid;
       low = mid + 1;

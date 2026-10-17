@@ -470,9 +470,14 @@
                      document.querySelector('.byline.ytmusic-player-bar') ||
                      document.querySelector('ytmusic-player-bar .subtitle');
     if (bylineEl) {
-      const artistLinks = bylineEl.querySelectorAll('a');
+      const allLinks = Array.from(bylineEl.querySelectorAll('a'));
+      const artistLinks = allLinks.filter(a => {
+        const href = a.getAttribute('href') || '';
+        return !href.includes('browse/MPRE') && !href.includes('browse/FEmusic_library_album');
+      });
+
       if (artistLinks.length > 0) {
-        artist = Array.from(artistLinks).map(a => a.textContent.trim()).filter(Boolean).join(', ');
+        artist = artistLinks.map(a => a.textContent.trim()).filter(Boolean).join(', ');
       } else {
         artist = bylineEl.textContent.trim().split('•')[0].trim();
       }

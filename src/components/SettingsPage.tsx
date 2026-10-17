@@ -54,6 +54,7 @@ export const SettingsPage: React.FC = () => {
     return saved === 'performance' ? 'performance' : 'native';
   });
 
+
   /** Resolved translation dictionary object for current language mode. */
   const t = getTranslation(languageMode);
 
@@ -77,6 +78,17 @@ export const SettingsPage: React.FC = () => {
       console.warn('Failed to get current window instance:', err);
     }
   };
+
+  /** Handles closing the window on Escape key press */
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        handleCloseWindow();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   /**
    * Effect hook to subscribe to state synchronization events from the main widget application window.
@@ -232,6 +244,7 @@ export const SettingsPage: React.FC = () => {
     safeEmit('change-glass-quality-cmd', quality);
   };
 
+
   /** Formats offset number into readable string representation (e.g. +0.5s or -0.2s). */
   const numStr = Number(offset.toFixed(2)).toString();
   const formattedOffset = (offset >= 0 ? `+${numStr}` : numStr) + 's';
@@ -355,6 +368,7 @@ export const SettingsPage: React.FC = () => {
               </div>
             </div>
           )}
+
 
           {/* Section 4: Language Settings */}
           <div className="settings-section">

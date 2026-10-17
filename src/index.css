@@ -66,6 +66,12 @@ html, body, #root {
   background: rgba(0, 0, 0, 0.18);
 }
 
+.widget-container.theme-liquid-glass {
+  border-radius: 16px !important;
+  clip-path: inset(0 round 16px);
+  -webkit-clip-path: inset(0 round 16px);
+}
+
 .widget-container.theme-liquid-glass.is-clickthrough,
 .widget-container.theme-liquid-glass.click-through {
   opacity: 0.55 !important;
@@ -185,25 +191,40 @@ html, body, #root {
 
 /* Enhanced High-Impact Dynamic Track Title & Artist Scaling */
 .track-title {
-  font-size: clamp(12px, 2.2vw + 3px, 26px);
+  font-size: clamp(14.5px, 2.6vw + 3.5px, 28px);
   font-weight: 800;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   color: #FFFFFF;
-  line-height: 1.2;
+  line-height: 1.25;
   letter-spacing: -0.2px;
+  text-shadow:
+     0.85px  0.00px 0 rgba(15, 15, 15, 0.1),
+    -0.85px  0.00px 0 rgba(15, 15, 15, 0.1),
+     0.00px  0.85px 0 rgba(15, 15, 15, 0.1),
+     0.00px -0.85px 0 rgba(15, 15, 15, 0.1),
+     0.60px  0.60px 0 rgba(15, 15, 15, 0.1),
+    -0.60px  0.60px 0 rgba(15, 15, 15, 0.1),
+     0.60px -0.60px 0 rgba(15, 15, 15, 0.1),
+    -0.60px -0.60px 0 rgba(15, 15, 15, 0.1),
+     0 0.5px 1.5px rgba(0, 0, 0, 0.15);
 }
 
 .track-artist {
-  font-size: clamp(10px, 1.2vw + 3px, 16px);
-  font-weight: 500;
-  color: var(--text-muted);
+  font-size: clamp(10.5px, 1.5vw + 3px, 16px);
+  font-weight: 600;
+  color: #FFFFFF;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.2;
   margin-top: 1px;
+  text-shadow:
+    0.9px  0.0px 0 rgba(0, 0, 0, 0.15),
+   -0.9px  0.0px 0 rgba(0, 0, 0, 0.15),
+    0.0px  0.9px 0 rgba(0, 0, 0, 0.15),
+    0.0px -0.9px 0 rgba(0, 0, 0, 0.15);
 }
 
 .playback-controls-group {
@@ -384,13 +405,18 @@ html, body, #root {
               radial-gradient(circle at 15% 90%, rgba(79, 172, 254, 0.04), transparent 35%),
               rgba(13, 17, 24, 0.98) !important;
   box-sizing: border-box;
-  overflow-y: auto;
-  overflow-x: hidden;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  clip-path: inset(0 round 14px);
+  -webkit-clip-path: inset(0 round 14px);
+  overflow: hidden;
 }
 
 .settings-window-container .settings-modal-card {
   width: 100%;
-  min-height: 100%;
+  height: 100%;
+  flex: 1;
+  min-height: 0;
   max-width: none;
   border-radius: 0;
   border: none;
@@ -418,6 +444,7 @@ html, body, #root {
   top: 0;
   z-index: 100;
   user-select: none;
+  flex-shrink: 0;
 }
 
 .settings-header-title {
@@ -467,6 +494,9 @@ html, body, #root {
   gap: 10px;
   width: 100%;
   box-sizing: border-box;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 /* Custom Glassmorphism Scrollbar for Settings Window */
@@ -746,6 +776,11 @@ html, body, #root {
   justify-content: center;
 }
 
+/* Fully transparent lyrics canvas: eliminates any gray vignette/scrim, maintaining pure glass transparency */
+.theme-liquid-glass .lyrics-canvas {
+  background: transparent !important;
+}
+
 .lyrics-wrapper {
   position: absolute;
   top: 50%;
@@ -781,22 +816,34 @@ html, body, #root {
 
 .ytm-lyric-line.past,
 .ytm-lyric-line.future {
-  font-weight: 500;
-  color: var(--text-muted);
-  opacity: 0.72;
-  transform: scale(0.94);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  font-weight: 600;
+  color: #FFFFFF;
+  opacity: 0.55;
+  transform: scale(0.95);
+  text-shadow:
+    0.5px  0.0px 0 rgba(0, 0, 0, 0.6),
+   -0.5px  0.0px 0 rgba(0, 0, 0, 0.6),
+    0.0px  0.5px 0 rgba(0, 0, 0, 0.6),
+    0.0px -0.5px 0 rgba(0, 0, 0, 0.6);
 }
 
 .ytm-lyric-line.active {
-  font-weight: 800;
+  position: relative;
+  z-index: 1;
+  font-weight: 750;
   color: #FFFFFF;
   background: linear-gradient(135deg, #FFFFFF 0%, #00F2FE 60%, #4FACFE 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   opacity: 1;
   transform: scale(1.15);
-  filter: drop-shadow(0 0 12px rgba(0, 242, 254, 0.45));
+  /* 0.20px 極輕羽化次像素襯底 (更少、更淡) + 9px 青藍通透微光暈 */
+  filter:
+    drop-shadow( 0.25px  0.0px 0 rgba(50, 50, 50, 0.2))
+    drop-shadow(-0.25px  0.0px 0 rgba(50, 50, 50, 0.2))
+    drop-shadow( 0.0px  0.25px 0 rgba(50, 50, 50, 0.2))
+    drop-shadow( 0.0px -0.25px 0 rgba(50, 50, 50, 0.2))
+    drop-shadow( 0 0 9px rgba(0, 242, 254, 0.52));
 }
 
 /* Status States */

@@ -19,6 +19,12 @@ import { LiquidGlassCanvas } from './components/LiquidGlassCanvas';
 import { LanguageMode, detectLanguage } from './i18n';
 import { memoryManager } from './services/memoryManager';
 
+declare global {
+  namespace NodeJS {
+    type Timeout = ReturnType<typeof setTimeout>;
+  }
+}
+
 /** Interface defining YouTube Music track data payload received via IPC / WebSocket. */
 interface TrackPayload {
   title: string;
@@ -200,6 +206,7 @@ const MainWidgetApp: React.FC = () => {
     return saved === 'liquid-glass' ? 'liquid-glass' : 'default';
   });
 
+
   /* Mutable References for Stable Subpixel Calculations and Async Event Guards */
   const currentSongRef = useRef<string>('');
   const latestTrackRef = useRef<TrackPayload | null>(null);
@@ -208,6 +215,7 @@ const MainWidgetApp: React.FC = () => {
   const offsetRef = useRef<number>(0);
   const languageModeRef = useRef<LanguageMode>('system');
   const uiThemeRef = useRef<UITheme>('default');
+  const retryTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   /** Real-time memory for expanded window physical height (default 560px), stored using Math.floor. */
   const savedExpandedHeightRef = useRef<number>(560);
@@ -232,6 +240,7 @@ const MainWidgetApp: React.FC = () => {
     localStorage.setItem('ytm_ui_theme', uiTheme);
     broadcastStateToSettings();
   }, [uiTheme]);
+
 
   /**
    * Persists offset changes to localStorage and broadcasts updated state to settings window.
@@ -431,6 +440,11 @@ const MainWidgetApp: React.FC = () => {
 
     const songKey = `${payload.title.toLowerCase().trim()}__${payload.artist.toLowerCase().trim()}`;
     if (songKey !== currentSongRef.current) {
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
+
       currentSongRef.current = songKey;
       setTrack({ ...payload, currentTime: 0 });
       setLyrics([]);
@@ -442,8 +456,26 @@ const MainWidgetApp: React.FC = () => {
         if (res && res.syncedLyrics) {
           const parsed = parseLrc(res.syncedLyrics);
           setLyrics(parsed);
+          retryTimerRef.current = null;
         } else {
           setLyrics([]);
+          retryTimerRef.current = setTimeout(async () => {
+            if (currentSongRef.current !== songKey) return;
+            try {
+              const retryRes = await fetchLyrics(payload.title, payload.artist, payload.duration);
+              if (currentSongRef.current === songKey && retryRes && retryRes.syncedLyrics) {
+                const parsed = parseLrc(retryRes.syncedLyrics);
+                setLyrics(parsed);
+                memoryManager.triggerProactiveGc('song-change');
+              }
+            } catch (err) {
+              console.warn('[LRCLIB] Self-healing retry error:', err);
+            } finally {
+              if (currentSongRef.current === songKey) {
+                retryTimerRef.current = null;
+              }
+            }
+          }, 4500);
         }
         setIsLoadingLyrics(false);
         if (latestTrackRef.current) {
@@ -586,6 +618,7 @@ const MainWidgetApp: React.FC = () => {
           broadcastStateToSettings();
         });
         if (isMounted) unlistens.push(u11); else u11();
+
       } catch (e) {}
     };
 
@@ -593,9 +626,23 @@ const MainWidgetApp: React.FC = () => {
 
     return () => {
       isMounted = false;
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
       unlistens.forEach((unlisten) => unlisten());
     };
   }, [handleUpdatePayload, toggleClickThrough, handleToggleLyrics]);
+
+  // Clean up retry timer on unmount
+  useEffect(() => {
+    return () => {
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
+    };
+  }, []);
 
   /** Adjusts offset by delta and persists to localStorage. */
   const handleOffsetChange = useCallback((delta: number) => {

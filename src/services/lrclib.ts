@@ -23,15 +23,20 @@ function isCircuitOpen(): boolean {
 function recordResponseStatus(status: number): void {
   if (status === 429 || status === 503) {
     consecutiveThrottleErrors++;
-    if (consecutiveThrottleErrors >= 2) {
-      circuitBreakerUntil = Date.now() + 30000;
+    if (consecutiveThrottleErrors >= 3) {
+      circuitBreakerUntil = Date.now() + 5000;
     }
   } else if (status !== 404 && status >= 200 && status < 400) {
     consecutiveThrottleErrors = 0;
   }
 }
 
-async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs: number = 6000): Promise<Response> {
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit = {},
+  timeoutMs: number = 6000,
+  retryCount: number = 0
+): Promise<Response> {
   const { signal: parentSignal, ...rest } = options;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -51,7 +56,62 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutM
   }
 
   try {
-    return await fetch(url, { ...rest, signal: controller.signal });
+    const response = await fetch(url, { ...rest, signal: controller.signal });
+
+    if (
+      (response.status === 503 || response.status === 429) &&
+      retryCount < 1 &&
+      (!parentSignal || !parentSignal.aborted)
+    ) {
+      const retryAfterHeader = response.headers.get('retry-after');
+      let retryAfterSec = 1.0;
+      if (retryAfterHeader) {
+        const parsed = parseFloat(retryAfterHeader);
+        if (!isNaN(parsed) && parsed > 0) {
+          retryAfterSec = Math.min(Math.max(parsed, 0.5), 2.5);
+        }
+      }
+
+      const jitterMs = Math.floor(Math.random() * 100) + 50;
+      const delayMs = Math.round(retryAfterSec * 1000) + jitterMs;
+
+      await new Promise<void>((resolve, reject) => {
+        let delayTimer: ReturnType<typeof setTimeout> | null = null;
+        let onDelayAbort: (() => void) | undefined;
+
+        const cleanup = () => {
+          if (delayTimer !== null) {
+            clearTimeout(delayTimer);
+            delayTimer = null;
+          }
+          if (parentSignal && onDelayAbort) {
+            parentSignal.removeEventListener('abort', onDelayAbort);
+          }
+        };
+
+        if (parentSignal) {
+          if (parentSignal.aborted) {
+            return reject(new DOMException('Aborted', 'AbortError'));
+          }
+          onDelayAbort = () => {
+            cleanup();
+            reject(new DOMException('Aborted', 'AbortError'));
+          };
+          parentSignal.addEventListener('abort', onDelayAbort);
+        }
+
+        delayTimer = setTimeout(() => {
+          cleanup();
+          resolve();
+        }, delayMs);
+      });
+
+      if (!parentSignal || !parentSignal.aborted) {
+        return await fetchWithTimeout(url, options, timeoutMs, retryCount + 1);
+      }
+    }
+
+    return response;
   } finally {
     clearTimeout(timer);
     if (parentSignal && onParentAbort) {
@@ -80,9 +140,16 @@ function setCacheItem(key: string, value: LrclibResponse | null) {
 
 /**
  * Common Chinese <-> English artist alias mapping dictionary
- * Includes C-Pop and popular Western/DJ Chinese translated names
+ * Includes C-Pop and popular Western/DJ/J-Pop Chinese translated names
  */
 const ARTIST_ALIASES: [string, string][] = [
+  // C-Pop
+  ['張藝興', 'lay'],
+  ['張藝興', 'lay zhang'],
+  ['张艺兴', 'lay'],
+  ['张艺兴', 'lay zhang'],
+  ['周深', 'charlie zhou'],
+  ['周深', 'zhou shen'],
   ['周興哲', 'eric chou'],
   ['周杰倫', 'jay chou'],
   ['鄧紫棋', 'g.e.m.'],
@@ -104,6 +171,61 @@ const ARTIST_ALIASES: [string, string][] = [
   ['茄子蛋', 'eggplantegg'],
   ['落日飛車', 'sunset rollercoaster'],
   ['冰球樂團', 'icyball'],
+  ['薛之謙', 'joker xue'],
+  ['李榮浩', 'li ronghao'],
+  ['李榮浩', 'ronghao li'],
+  ['華晨宇', 'hua chenyu'],
+  ['毛不易', 'mao buyi'],
+  ['汪蘇瀧', 'silence wang'],
+  ['許嵩', 'vae'],
+  ['鹿晗', 'luhan'],
+  ['黃子韜', 'z.tao'],
+  ['易烊千璽', 'jackson yee'],
+  ['王俊凱', 'karry wang'],
+  ['王源', 'roy wang'],
+  ['蔡徐坤', 'kun'],
+  ['劉憲華', 'henry lau'],
+  ['宋雨琦', 'yuqi'],
+  ['葉舒華', 'shuhua'],
+  ['徐明浩', 'the8'],
+  ['文俊輝', 'jun'],
+  ['王一博', 'wang yibo'],
+  ['肖戰', 'xiao zhan'],
+  ['許光漢', 'greg han'],
+  ['梁靜茹', 'fish leong'],
+  ['孫燕姿', 'stefanie sun'],
+  ['莫文蔚', 'karen mok'],
+  ['陶喆', 'david tao'],
+  ['王力宏', 'leehom wang'],
+  ['王力宏', 'wang leehom'],
+  ['方大同', 'khalil fong'],
+  ['盧廣仲', 'crowd lu'],
+  ['持修', 'chih siou'],
+  ['高爾宣', 'osn'],
+  ['瘦子', 'e.so'],
+  ['婁峻碩', 'shou lou'],
+  ['婁峻碩', 'shou'],
+  ['熊仔', 'kumachan'],
+  ['黃宣', 'yellow'],
+  ['孫盛希', 'shi shi'],
+  ['吳卓源', 'julia wu'],
+  ['陳芳語', 'kimberley chen'],
+  ['美秀集團', 'amazing show'],
+  ['血肉果汁機', 'flesh juicer'],
+  ['滅火器', 'fire ex.'],
+  ['珂拉琪', 'collage'],
+  ['理想混蛋', 'bestards'],
+  ['芒果醬', 'mango jump'],
+  ['宇宙人', 'cosmospeople'],
+  ['八三夭', '831'],
+  ['動力火車', 'power station'],
+  ['信樂團', 'shin'],
+  ['蘇打綠', 'sodagreen'],
+  ['魚丁糸', 'oaeen'],
+  ['飛兒樂團', 'f.i.r.'],
+  ['S.H.E', 'she'],
+
+  // Western / International
   ['格里芬', 'gryffin'],
   ['艾利·杜赫', 'elley duhé'],
   ['艾利杜赫', 'elley duhe'],
@@ -130,6 +252,28 @@ const ARTIST_ALIASES: [string, string][] = [
   ['魔力紅', 'maroon 5'],
   ['西城男孩', 'westlife'],
   ['後街男孩', 'backstreet boys'],
+
+  // J-Pop
+  ['米津玄師', 'kenshi yonezu'],
+  ['宇多田光', 'hikaru utada'],
+  ['椎名林檎', 'sheena ringo'],
+  ['星野源', 'gen hoshino'],
+  ['藤井風', 'fujii kaze'],
+  ['愛繆', 'aimyon'],
+  ['優里', 'yuuri'],
+  ['綠黃色社會', 'ryokuoushoku shakai'],
+  ['ヨルシカ', 'yorushika'],
+  ['ずっと真夜中でいいのに。', 'zutomayo'],
+  ['ツユ', 'tuyu'],
+  ['Official髭男dism', 'higedan'],
+  ['King Gnu', 'king gnu'],
+  ['Mrs. GREEN APPLE', 'mrs green apple'],
+  ['RADWIMPS', 'radwimps'],
+  ['ONE OK ROCK', 'one ok rock'],
+  ['Aimer', 'aimer'],
+  ['LiSA', 'lisa'],
+  ['Eve', 'eve'],
+  ['Vaundy', 'vaundy'],
 ];
 
 /**
@@ -155,50 +299,53 @@ function stripAllBrackets(text: string): string {
 function sanitizeTrackTitle(title: string): string {
   if (!title) return '';
   const cleaned = title
-    .replace(/\(Official (Video|Audio|Music Video)\)/gi, '')
-    .replace(/\[Official (Video|Audio|Music Video)\]/gi, '')
-    .replace(/\(Official\)/gi, '')
-    .replace(/\[Official\]/gi, '')
-    .replace(/\(MV\)/gi, '')
-    .replace(/\[MV\]/gi, '')
-    .replace(/\(Audio\)/gi, '')
-    .replace(/\[Audio\]/gi, '')
-    .replace(/\[HD\]/gi, '')
-    .replace(/\[4K\]/gi, '')
+    .replace(/\(Official (Video|Audio|Music Video|Lyric Video)\)/gi, '')
+    .replace(/\[Official (Video|Audio|Music Video|Lyric Video)\]/gi, '')
+    .replace(/【Official (Video|Audio|Music Video|Lyric Video|MV)】/gi, '')
+    .replace(/\((?:Official|MV|Audio|Visualizer|Lyric Video|Lyrics|Live|HD|4K|Remastered|20\d\d Remaster)\)/gi, '')
+    .replace(/\[(?:Official|MV|Audio|Visualizer|Lyric Video|Lyrics|Live|HD|4K|Remastered|20\d\d Remaster)\]/gi, '')
+    .replace(/【(?:Official|MV|Audio|Visualizer|Lyric Video|Lyrics|Live|官方|官方MV|歌詞)】/gi, '')
     .replace(/\(合作演出.*?\)/gi, '')
     .replace(/\[合作演出.*?\]/gi, '')
-    .replace(/\(feat\..*?\)/gi, '')
-    .replace(/\[feat\..*?\]/gi, '')
-    .replace(/\(ft\..*?\)/gi, '')
-    .replace(/\[ft\..*?\]/gi, '')
-    .replace(/\(with.*?\)/gi, '')
-    .replace(/\[with.*?\]/gi, '')
-    .replace(/\(prod\..*?\)/gi, '')
-    .replace(/\[prod\..*?\]/gi, '')
-    .replace(/\s+feat\..*$/gi, '')
-    .replace(/\s+ft\..*$/gi, '')
+    .replace(/【合作演出.*?】/gi, '')
+    .replace(/\((?:feat|ft|with|prod)\.?\s*.*?\)/gi, '')
+    .replace(/\[(?:feat|ft|with|prod)\.?\s*.*?\]/gi, '')
+    .replace(/【(?:feat|ft|with|prod)\.?\s*.*?】/gi, '')
+    .replace(/\s+(?:feat|ft)\.?\s+.*$/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
   return stripAllBrackets(cleaned);
 }
 
 /**
- * Clean primary artist name
+ * Multi-artist parser supporting common separators (&, |, ,, 和, 與, feat, etc.)
  */
-function sanitizeArtistName(artist: string): string {
-  if (!artist) return '';
-  return artist
-    .split('|')[0]
-    .split('丨')[0]
-    .split(',')[0]
-    .split('&')[0]
-    .split(' 和 ')[0]
-    .split(' 與 ')[0]
-    .split(' 及 ')[0]
-    .split(' / ')[0]
-    .replace(/\(feat\..*?\)/gi, '')
-    .replace(/feat\..*$/gi, '')
-    .trim();
+export function parseArtistList(raw: string): string[] {
+  if (!raw) return [];
+  return raw
+    .split(/\s*(?:,|&|\||丨|\/|\\|和|與|及|\bx\b|\bfeat\.?|\bft\.?|×)\s*/gi)
+    .map(s => s.replace(/[\(\（].*?[\)\）]/g, '').trim())
+    .filter(s => s.length > 0);
+}
+
+/**
+ * Resolves all known aliases for a given artist name from ARTIST_ALIASES
+ */
+function getArtistAliases(artist: string): string[] {
+  if (!artist) return [];
+  const norm = artist.toLowerCase().replace(/[\s\·\-\.]/g, '');
+  const aliases: string[] = [];
+  for (const [zh, en] of ARTIST_ALIASES) {
+    const zhNorm = zh.toLowerCase().replace(/[\s\·\-\.]/g, '');
+    const enNorm = en.toLowerCase().replace(/[\s\·\-\.]/g, '');
+    if (norm === zhNorm || norm.includes(zhNorm) || zhNorm.includes(norm)) {
+      if (!aliases.includes(en)) aliases.push(en);
+    }
+    if (norm === enNorm || norm.includes(enNorm) || enNorm.includes(norm)) {
+      if (!aliases.includes(zh)) aliases.push(zh);
+    }
+  }
+  return aliases;
 }
 
 /**
@@ -218,13 +365,38 @@ function isArtistAliasMatch(targetArtist: string, itemArtist: string): boolean {
   return false;
 }
 
+function isArtistDirectOrAliasMatch(target: string, cand: string): boolean {
+  if (!target || !cand) return false;
+  if (isArtistAliasMatch(target, cand)) return true;
+
+  const norm = (s: string) => s.toLowerCase().replace(/[^\w\u4e00-\u9fa5]/g, '');
+  const tNorm = norm(target);
+  const cNorm = norm(cand);
+  if (tNorm && tNorm === cNorm) return true;
+
+  const tSimp = norm(toSimplified(target));
+  const cSimp = norm(toSimplified(cand));
+  if (tSimp && tSimp === cSimp) return true;
+
+  const tTrad = norm(toTraditional(target));
+  const cTrad = norm(toTraditional(cand));
+  if (tTrad && tTrad === cTrad) return true;
+
+  if (tNorm.length >= 2 && cNorm.includes(tNorm)) return true;
+  if (cNorm.length >= 2 && tNorm.includes(cNorm)) return true;
+  if (tSimp.length >= 2 && cSimp.includes(tSimp)) return true;
+  if (cSimp.length >= 2 && tSimp.includes(cSimp)) return true;
+
+  return false;
+}
+
 /**
  * Score & pick the best matching candidate from LRCLIB search results
  */
 function findBestMatch(
   results: LrclibResponse[],
   cleanTrack: string,
-  cleanArtist: string,
+  targetArtistList: string[],
   duration?: number
 ): LrclibResponse | null {
   if (!results || results.length === 0) return null;
@@ -236,12 +408,15 @@ function findBestMatch(
 
   const targetTrack = cleanTrack.toLowerCase();
   const targetPureTrack = pureTrack.toLowerCase();
-  const targetArtist = cleanArtist.toLowerCase();
+  const primaryArtist = targetArtistList[0] || '';
+  const collabArtists = targetArtistList.slice(1);
 
   const targetTrackSimp = toSimplified(targetTrack);
   const targetPureTrackSimp = toSimplified(targetPureTrack);
-  const targetArtistSimp = toSimplified(targetArtist);
-  const targetArtistTrad = toTraditional(targetArtist);
+
+  const norm = (s: string) => s.toLowerCase().replace(/[^\w\u4e00-\u9fa5]/g, '');
+  const targetNorm = norm(cleanTrack);
+  const targetPureNorm = norm(pureTrack);
 
   for (const item of results) {
     if (!item.syncedLyrics && !item.plainLyrics) continue;
@@ -249,12 +424,7 @@ function findBestMatch(
     const itemTrack = (item.trackName || '').toLowerCase();
     const itemArtist = (item.artistName || '').toLowerCase();
     const itemTrackSimp = toSimplified(itemTrack);
-    const itemArtistSimp = toSimplified(itemArtist);
-    const itemArtistTrad = toTraditional(itemArtist);
 
-    const norm = (s: string) => s.toLowerCase().replace(/[^\w\u4e00-\u9fa5]/g, '');
-    const targetNorm = norm(cleanTrack);
-    const targetPureNorm = norm(pureTrack);
     const itemNorm = norm(itemTrack);
     const itemSimpNorm = norm(itemTrackSimp);
 
@@ -272,25 +442,8 @@ function findBestMatch(
       itemNorm.includes(targetPureNorm) || targetPureNorm.includes(itemNorm) ||
       itemSimpNorm.includes(norm(targetTrackSimp)) || itemSimpNorm.includes(norm(targetPureTrackSimp))
     );
-    
-    // Calculate artist match (including cross S2T and Chinese/English aliases like 格里芬 vs Gryffin)
-    const aliasMatch = isArtistAliasMatch(targetArtist, itemArtist);
 
-    const artistExact = aliasMatch || (targetArtist && itemArtist && (
-      itemArtist === targetArtist || itemArtistSimp === targetArtistSimp ||
-      itemArtistTrad === targetArtistTrad ||
-      (itemArtist.includes(targetArtist) && targetArtist.length >= 2) ||
-      (targetArtist.includes(itemArtist) && itemArtist.length >= 2)
-    ));
-
-    const artistPartial = aliasMatch || (targetArtist && itemArtist && (
-      itemArtist.includes(targetArtist) || targetArtist.includes(itemArtist) ||
-      itemArtistSimp.includes(targetArtistSimp) || targetArtistSimp.includes(itemArtistSimp) ||
-      itemArtistTrad.includes(targetArtistTrad) ||
-      targetArtistTrad.includes(itemArtistTrad)
-    ));
-
-    // If duration differs by >35 seconds AND title/artist don't match well, skip
+    // If duration differs by >35 seconds AND title doesn't match well, skip
     if (duration && duration > 0 && item.duration && item.duration > 0) {
       const diff = Math.abs(item.duration - duration);
       if (diff > 35 && !trackExact) {
@@ -315,22 +468,47 @@ function findBestMatch(
       score -= 150;
     }
 
-    // Check if targetArtist is Chinese while candidate artist is English/ASCII
-    const targetIsChinese = /[\u4e00-\u9fa5]/.test(targetArtist);
-    const itemIsEnglish = /^[\x00-\x7F]+$/.test(itemArtist);
+    // 3. Multi-artist matching
+    const candidateArtistList = parseArtistList(item.artistName || '');
+    if (candidateArtistList.length === 0 && item.artistName) {
+      candidateArtistList.push(item.artistName.trim());
+    }
 
-    // 3. Artist match score & mismatch penalty
-    if (targetArtist && itemArtist) {
-      if (artistExact) {
+    let hitPrimary = false;
+    if (primaryArtist) {
+      hitPrimary = candidateArtistList.some(cand => isArtistDirectOrAliasMatch(primaryArtist, cand)) ||
+                   isArtistDirectOrAliasMatch(primaryArtist, item.artistName || '');
+    }
+
+    let hitCollab = false;
+    if (collabArtists.length > 0) {
+      hitCollab = collabArtists.some(collab =>
+        candidateArtistList.some(cand => isArtistDirectOrAliasMatch(collab, cand)) ||
+        isArtistDirectOrAliasMatch(collab, item.artistName || '')
+      );
+    }
+
+    const hitBoth = hitPrimary && hitCollab;
+    const hitAny = hitPrimary || hitCollab;
+
+    if (targetArtistList.length > 0 && itemArtist) {
+      if (hitBoth) {
+        score += 150;
+      } else if (hitPrimary) {
         score += 100;
-      } else if (artistPartial) {
-        score += 70;
-      } else if (trackExact && targetIsChinese && itemIsEnglish) {
-        // Mild deduction (-50) if Chinese-translated artist name plays an exact English track title
-        score -= 50;
+      } else if (hitCollab) {
+        score += 80;
       } else {
-        // Severe penalty (-1000) if candidate artist is completely unrelated to target artist
-        score -= 1000;
+        const targetIsChinese = targetArtistList.some(a => /[\u4e00-\u9fa5]/.test(a));
+        // Check if candidate artist has no CJK ideographs/kana/hangul
+        const itemHasNoAsianChars = !/[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]/.test(item.artistName || '');
+        if (trackExact && targetIsChinese && itemHasNoAsianChars) {
+          // Mild deduction (-50) if Chinese-translated artist name plays an exact English track title
+          score -= 50;
+        } else {
+          // Severe penalty (-1000) if candidate artist is completely unrelated to target artist
+          score -= 1000;
+        }
       }
     }
 
@@ -384,10 +562,15 @@ export async function fetchLyrics(trackName: string, artistName: string, duratio
 
   const cleanTrack = sanitizeTrackTitle(rawTrack);
   const pureTrack = stripAllBrackets(cleanTrack);
-  const cleanArtist = sanitizeArtistName(rawArtist);
+
+  const artistList = parseArtistList(rawArtist);
+  const primaryArtist = artistList[0] || '';
+  const collabArtists = artistList.slice(1);
+  const primaryAliases = getArtistAliases(primaryArtist);
 
   const roundedDuration = typeof duration === 'number' && Number.isFinite(duration) && duration > 0 ? Math.round(duration) : 0;
-  const cacheKey = `${cleanTrack.toLowerCase()}__${cleanArtist.toLowerCase()}__${roundedDuration}`;
+  const targetArtistListStr = artistList.length > 0 ? artistList.join(',').toLowerCase() : rawArtist.toLowerCase();
+  const cacheKey = `${cleanTrack.toLowerCase()}__${targetArtistListStr}__${roundedDuration}`;
   
   const cached = getCacheItem(cacheKey);
   if (cached.found) {
@@ -402,54 +585,56 @@ export async function fetchLyrics(trackName: string, artistName: string, duratio
   activeAbortController = currentController;
   const signal = currentController.signal;
 
+  let hasThrottleOrNetworkError = false;
+  let allCompletedNormally = true;
+
   try {
-    const params = new URLSearchParams({
-      track_name: pureTrack || cleanTrack,
-      artist_name: cleanArtist,
-    });
-    if (roundedDuration > 0) {
-      params.append('duration', roundedDuration.toString());
+    const searchUrls: string[] = [];
+
+    // 1. Primary artist search
+    if (primaryArtist) {
+      searchUrls.push(`https://lrclib.net/api/search?q=${encodeURIComponent(`${cleanTrack} ${primaryArtist}`.trim())}`);
     }
 
-    const getUrl = `https://lrclib.net/api/get?${params.toString()}`;
-    
-    const searchUrls: string[] = [
-      getUrl,
-      `https://lrclib.net/api/search?q=${encodeURIComponent(`${cleanTrack} ${cleanArtist}`.trim())}`,
-      `https://lrclib.net/api/search?q=${encodeURIComponent(cleanTrack)}`,
-    ];
+    // 2. Primary alias search
+    if (primaryAliases.length > 0) {
+      searchUrls.push(`https://lrclib.net/api/search?q=${encodeURIComponent(`${cleanTrack} ${primaryAliases[0]}`.trim())}`);
+    }
 
+    // 3. Collab artist search
+    if (collabArtists.length > 0) {
+      searchUrls.push(`https://lrclib.net/api/search?q=${encodeURIComponent(`${cleanTrack} ${collabArtists[0]}`.trim())}`);
+    }
+
+    // 4. Primary alias + Collab artist search
+    if (primaryAliases.length > 0 && collabArtists.length > 0) {
+      searchUrls.push(`https://lrclib.net/api/search?q=${encodeURIComponent(`${cleanTrack} ${primaryAliases[0]} ${collabArtists[0]}`.trim())}`);
+    }
+
+    // 5. Pure track without brackets with primary artist/alias
     if (pureTrack && pureTrack !== cleanTrack) {
-      searchUrls.push(`https://lrclib.net/api/search?q=${encodeURIComponent(`${pureTrack} ${cleanArtist}`.trim())}`);
-      searchUrls.push(`https://lrclib.net/api/search?q=${encodeURIComponent(pureTrack)}`);
-    }
-
-    // English artist alias queries (e.g. 周興哲 -> Eric Chou, 格里芬 -> Gryffin)
-    const cleanArtistNorm = cleanArtist.toLowerCase().replace(/[\s\·\-\.]/g, '');
-    for (const [zh, en] of ARTIST_ALIASES) {
-      const zhNorm = zh.toLowerCase().replace(/[\s\·\-\.]/g, '');
-      if (cleanArtistNorm.includes(zhNorm) || zhNorm.includes(cleanArtistNorm)) {
-        searchUrls.push(`https://lrclib.net/api/search?q=${encodeURIComponent(`${pureTrack} ${en}`)}`);
+      if (primaryArtist) {
+        searchUrls.push(`https://lrclib.net/api/search?q=${encodeURIComponent(`${pureTrack} ${primaryArtist}`.trim())}`);
+      }
+      if (primaryAliases.length > 0) {
+        searchUrls.push(`https://lrclib.net/api/search?q=${encodeURIComponent(`${pureTrack} ${primaryAliases[0]}`.trim())}`);
       }
     }
 
-    // Simplified Chinese queries
+    // 6. Simplified Chinese query if Chinese present
     const simpTrack = toSimplified(cleanTrack);
-    const simpPureTrack = toSimplified(pureTrack);
-    const simpArtist = toSimplified(cleanArtist);
-
-    searchUrls.push(`https://lrclib.net/api/search?q=${encodeURIComponent(`${simpTrack} ${simpArtist}`.trim())}`);
-    searchUrls.push(`https://lrclib.net/api/search?q=${encodeURIComponent(simpTrack)}`);
-
-    if (simpPureTrack && simpPureTrack !== simpTrack) {
-      searchUrls.push(`https://lrclib.net/api/search?q=${encodeURIComponent(`${simpPureTrack} ${simpArtist}`.trim())}`);
-      searchUrls.push(`https://lrclib.net/api/search?q=${encodeURIComponent(simpPureTrack)}`);
+    const simpPrimary = toSimplified(primaryArtist);
+    if (/[\u4e00-\u9fa5]/.test(cleanTrack) || /[\u4e00-\u9fa5]/.test(primaryArtist)) {
+      searchUrls.push(`https://lrclib.net/api/search?q=${encodeURIComponent(`${simpTrack} ${simpPrimary}`.trim())}`);
     }
 
-    // Deduplicate candidate URLs and limit max parallel requests to top 4 to prevent Rate Limiting (HTTP 429)
-    const uniqueSearchUrls = Array.from(new Set(searchUrls)).slice(0, 4);
+    // 7. Track title only fallback
+    searchUrls.push(`https://lrclib.net/api/search?q=${encodeURIComponent(cleanTrack)}`);
 
-    // Fire deduplicated endpoints concurrently for maximum speed and recall
+    // Deduplicate candidate URLs and limit max parallel requests to top 5
+    const uniqueSearchUrls = Array.from(new Set(searchUrls.filter(Boolean))).slice(0, 5);
+
+    // Fire deduplicated search endpoints concurrently for maximum speed and recall
     const results = await Promise.allSettled(uniqueSearchUrls.map(url => fetchWithTimeout(url, { signal }, 6000)));
 
     if (signal.aborted) {
@@ -460,7 +645,7 @@ export async function fetchLyrics(trackName: string, artistName: string, duratio
     const seenIds = new Set<number>();
 
     for (const res of results) {
-      if (candidatePool.length >= 25) break;
+      if (candidatePool.length >= 30) break;
       if (res.status === 'fulfilled') {
         const response = res.value;
         recordResponseStatus(response.status);
@@ -475,7 +660,7 @@ export async function fetchLyrics(trackName: string, artistName: string, duratio
             const json = await response.json();
             if (Array.isArray(json)) {
               for (const item of json) {
-                if (candidatePool.length >= 25) break;
+                if (candidatePool.length >= 30) break;
                 if (item && item.id && !seenIds.has(item.id)) {
                   seenIds.add(item.id);
                   candidatePool.push(item);
@@ -485,12 +670,20 @@ export async function fetchLyrics(trackName: string, artistName: string, duratio
               if (json.id && !seenIds.has(json.id)) {
                 seenIds.add(json.id);
                 candidatePool.push(json);
-              } else if (!json.id && candidatePool.length < 25) {
+              } else if (!json.id && candidatePool.length < 30) {
                 candidatePool.push(json);
               }
             }
           } catch (e) {}
+        } else {
+          allCompletedNormally = false;
+          if (response.status === 429 || response.status === 503) {
+            hasThrottleOrNetworkError = true;
+          }
         }
+      } else {
+        allCompletedNormally = false;
+        hasThrottleOrNetworkError = true;
       }
     }
 
@@ -499,7 +692,7 @@ export async function fetchLyrics(trackName: string, artistName: string, duratio
     }
 
     if (candidatePool.length > 0) {
-      const best = findBestMatch(candidatePool, cleanTrack, cleanArtist, roundedDuration);
+      const best = findBestMatch(candidatePool, cleanTrack, artistList, roundedDuration);
       if (best) {
         // Convert lyrics to Traditional Chinese (Taiwan standard) before returning
         const convertedBest: LrclibResponse = {
@@ -510,6 +703,11 @@ export async function fetchLyrics(trackName: string, artistName: string, duratio
         setCacheItem(cacheKey, convertedBest);
         return convertedBest;
       }
+    }
+
+    // Only cache null if all queries completed normally with 200 and candidate pool yielded no match
+    if (allCompletedNormally && !hasThrottleOrNetworkError && !signal.aborted) {
+      setCacheItem(cacheKey, null);
     }
   } catch (err: any) {
     if (err?.name === 'AbortError' || signal.aborted) {
@@ -522,8 +720,5 @@ export async function fetchLyrics(trackName: string, artistName: string, duratio
     }
   }
 
-  if (!signal.aborted) {
-    setCacheItem(cacheKey, null);
-  }
   return null;
 }

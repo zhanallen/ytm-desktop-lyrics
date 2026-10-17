@@ -108,7 +108,7 @@ const DEFAULT_PRESET: LiquidGlassPreset = {
    * - 數值愈高 (如 0.5 ~ 0.7)：玻璃本體顏色越濃重（底色遮蓋度高，背景更暗沉）。
    * - 數值愈低 (如 0.0 ~ 0.2)：玻璃越通透，越貼近原生背景色彩。
    */
-  tintOpacity: 0.15,
+  tintOpacity: 0.10,
 
   /**
    * 玻璃自定義底色 (Base Tint Color, Hex)
@@ -116,7 +116,7 @@ const DEFAULT_PRESET: LiquidGlassPreset = {
    * - 預設 '#00050a' 搭配 tintOpacity 營造出如黑曜石般的高級深邃暗色玻璃質感。
    * - 若改為其他顏色（如深邃寶藍 '#000b18'、翡翠紫黑 '#0b0014'），可賦予玻璃獨特的環境氛圍。
    */
-  tintColor: '#00050a',
+  tintColor: '#0F1F2F',
 
   /**
    * 幾何收縮與邊緣過渡係數 (Smink Factor) - 預設: 28.0
@@ -289,7 +289,8 @@ void main() {
     vec2 px = gl_FragCoord.xy;
     vec2 p0 = px - u_pos0;
     vec2 cardSize = u_res * 0.5;
-    float cornerRadius = clamp(min(u_res.x, u_res.y) * 0.06, 6.0 * u_dpr, 12.0 * u_dpr);
+    // Maintain consistent, non-deforming 16px Apple-style large corner radius
+    float cornerRadius = min(16.0 * u_dpr, min(cardSize.x, cardSize.y));
     float d = sdRoundBox(p0, cardSize, cornerRadius);
     float aa = max(fwidth(d), 0.75 * u_dpr);
 
