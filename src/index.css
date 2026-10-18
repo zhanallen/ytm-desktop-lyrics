@@ -1,5 +1,5 @@
 :root {
-  --font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", "Segoe UI", sans-serif;
+  --font-family: 'Inter', 'Noto Sans TC', system-ui, -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", "Segoe UI", sans-serif;
   --bg-glass: rgba(14, 16, 22, 0.88);
   --bg-glass-clickthrough: rgba(8, 10, 15, 0.38);
   --border-glass: rgba(255, 255, 255, 0.14);
@@ -836,7 +836,7 @@ html, body, #root {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   opacity: 1;
-  transform: scale(1.15);
+  transform: scale(1.2);
   /* 0.20px 極輕羽化次像素襯底 (更少、更淡) + 9px 青藍通透微光暈 */
   filter:
     drop-shadow( 0.25px  0.0px 0 rgba(50, 50, 50, 0.2))
