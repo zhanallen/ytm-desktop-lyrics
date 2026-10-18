@@ -1,6 +1,6 @@
 [package]
 name = "ytm-desktop-lyrics"
-version = "1.2.2"
+version = "1.2.3"
 description = "YTM Desktop Lyrics Widget"
 authors = ["Antigravity"]
 edition = "2021"
