@@ -659,7 +659,16 @@ const MainWidgetApp: React.FC = () => {
     localStorage.setItem('ytm_offset', '0');
   }, []);
 
-  const handlePlayPause = useCallback(() => sendPlayerCommand('playPause'), [sendPlayerCommand]);
+  const handlePlayPause = useCallback(() => {
+    // Optimistic UI state toggle: instant 0ms tactile feedback
+    setTrack(prev => {
+      if (!prev) return prev;
+      const nextState = { ...prev, isPaused: !prev.isPaused };
+      latestTrackRef.current = nextState;
+      return nextState;
+    });
+    sendPlayerCommand('playPause');
+  }, [sendPlayerCommand]);
   const handleNext = useCallback(() => sendPlayerCommand('next'), [sendPlayerCommand]);
   const handlePrevious = useCallback(() => sendPlayerCommand('previous'), [sendPlayerCommand]);
   const handleToggleClickThrough = useCallback(() => toggleClickThrough(), [toggleClickThrough]);
