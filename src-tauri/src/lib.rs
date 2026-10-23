@@ -1049,6 +1049,10 @@ pub fn run() {
                     std::time::Instant::now() - std::time::Duration::from_millis(100)
                 ));
                 let last_moved_time_clone = last_moved_time.clone();
+                let last_resized_time = std::sync::Arc::new(std::sync::Mutex::new(
+                    std::time::Instant::now() - std::time::Duration::from_millis(100)
+                ));
+                let last_resized_time_clone = last_resized_time.clone();
 
                 window.on_window_event(move |event| {
                     match event {
@@ -1060,8 +1064,13 @@ pub fn run() {
                                 let _ = win_clone.emit("desktop-window-moved", serde_json::json!({ "x": pos.x, "y": pos.y }));
                             }
                         }
-                        tauri::WindowEvent::Resized(_) => {
-                            let _ = win_clone.emit("desktop-window-moved", ());
+                        tauri::WindowEvent::Resized(size) => {
+                            let mut last = last_resized_time_clone.lock().unwrap();
+                            let now = std::time::Instant::now();
+                            if now.duration_since(*last).as_millis() >= 10 {
+                                *last = now;
+                                let _ = win_clone.emit("desktop-window-moved", serde_json::json!({ "w": size.width, "h": size.height }));
+                            }
                         }
                         _ => {}
                     }

@@ -496,6 +496,8 @@ export const LiquidGlassCanvas: React.FC<LiquidGlassCanvasProps> = React.memo(({
   const isMovingRef = useRef<boolean>(false);
   const isDraggingRef = useRef<boolean>(false);
   const dragStartPosRef = useRef<{ x: number; y: number } | null>(null);
+  const currentSizeRef = useRef<{ w: number; h: number }>({ w: 0, h: 0 });
+  const dragStartSizeRef = useRef<{ w: number; h: number } | null>(null);
   const blackTransitionRef = useRef<number>(0.0);
   const targetBlackTransitionRef = useRef<number>(0.0);
   const lastMovedTimeRef = useRef<number>(0);
@@ -531,6 +533,15 @@ export const LiquidGlassCanvas: React.FC<LiquidGlassCanvasProps> = React.memo(({
           if (syncWatchRectFnRef.current) {
             syncWatchRectFnRef.current();
           }
+        }
+      })
+      .catch(() => {});
+
+    getCurrentWindow()
+      .outerSize()
+      .then((size) => {
+        if (size && (size.width !== 0 || size.height !== 0) && isMounted) {
+          currentSizeRef.current = { w: size.width, h: size.height };
         }
       })
       .catch(() => {});
@@ -1219,8 +1230,27 @@ export const LiquidGlassCanvas: React.FC<LiquidGlassCanvasProps> = React.memo(({
 
       let unlistenResize: (() => void) | null = null;
       getCurrentWindow()
-        .onResized(() => {
+        .onResized((event) => {
           updateVisibilityAndMinimizeState();
+          if (event?.payload) {
+            const { width, height } = event.payload;
+            if (typeof width === 'number' && typeof height === 'number') {
+              currentSizeRef.current = { w: width, h: height };
+              if (isDraggingRef.current && dragStartSizeRef.current) {
+                const dpr = window.devicePixelRatio || 1;
+                const dw = (width - dragStartSizeRef.current.w) / dpr;
+                const dh = (height - dragStartSizeRef.current.h) / dpr;
+                let maxDist = Math.sqrt(dw * dw + dh * dh);
+                if (dragStartPosRef.current) {
+                  const dx = (currentPosRef.current.x - dragStartPosRef.current.x) / dpr;
+                  const dy = (currentPosRef.current.y - dragStartPosRef.current.y) / dpr;
+                  maxDist = Math.max(maxDist, Math.sqrt(dx * dx + dy * dy));
+                }
+                targetBlackTransitionRef.current = Math.min(Math.max(maxDist / 35.0, 0.0), 1.0);
+                wakeRenderLoop();
+              }
+            }
+          }
         })
         .then((unlisten) => {
           if (!isCurrentGLActive) {
@@ -1238,22 +1268,32 @@ export const LiquidGlassCanvas: React.FC<LiquidGlassCanvasProps> = React.memo(({
       let unlistenDragEnded: (() => void) | null = null;
 
       // Real-time window movement listener: updates position delta and drives 60/120/144 FPS WebGL offset
-      listen<{ x?: number; y?: number }>('desktop-window-moved', (event) => {
+      listen<{ x?: number; y?: number; w?: number; h?: number }>('desktop-window-moved', (event) => {
         if (!isCurrentGLActive) return;
-        if (event.payload && typeof event.payload.x === 'number' && typeof event.payload.y === 'number') {
-          const newX = event.payload.x;
-          const newY = event.payload.y;
-          currentPosRef.current = { x: newX, y: newY };
+        const payload = event.payload;
+        if (payload) {
+          if (typeof payload.x === 'number' && typeof payload.y === 'number') {
+            currentPosRef.current = { x: payload.x, y: payload.y };
+          }
+          if (typeof payload.w === 'number' && typeof payload.h === 'number') {
+            currentSizeRef.current = { w: payload.w, h: payload.h };
+          }
 
           if (isDraggingRef.current) {
-            if (!dragStartPosRef.current) {
-              dragStartPosRef.current = { x: newX, y: newY };
+            const dpr = window.devicePixelRatio || 1;
+            let maxDist = 0;
+            if (dragStartPosRef.current) {
+              const dx = (currentPosRef.current.x - dragStartPosRef.current.x) / dpr;
+              const dy = (currentPosRef.current.y - dragStartPosRef.current.y) / dpr;
+              maxDist = Math.max(maxDist, Math.sqrt(dx * dx + dy * dy));
             }
-            const dx = newX - dragStartPosRef.current.x;
-            const dy = newY - dragStartPosRef.current.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dragStartSizeRef.current && currentSizeRef.current.w > 0 && currentSizeRef.current.h > 0) {
+              const dw = (currentSizeRef.current.w - dragStartSizeRef.current.w) / dpr;
+              const dh = (currentSizeRef.current.h - dragStartSizeRef.current.h) / dpr;
+              maxDist = Math.max(maxDist, Math.sqrt(dw * dw + dh * dh));
+            }
             // Map displacement (0 ~ 35px) to 0.0 ~ 1.0 transition target
-            targetBlackTransitionRef.current = Math.min(Math.max(dist / 35.0, 0.0), 1.0);
+            targetBlackTransitionRef.current = Math.min(Math.max(maxDist / 35.0, 0.0), 1.0);
           }
         }
         isMovingRef.current = true;
@@ -1273,6 +1313,15 @@ export const LiquidGlassCanvas: React.FC<LiquidGlassCanvasProps> = React.memo(({
         if (!isCurrentGLActive) return;
         isDraggingRef.current = true;
         dragStartPosRef.current = { ...currentPosRef.current };
+        const dpr = window.devicePixelRatio || 1;
+        const curW = currentSizeRef.current.w > 0
+          ? currentSizeRef.current.w
+          : Math.round((canvas?.clientWidth || 300) * dpr);
+        const curH = currentSizeRef.current.h > 0
+          ? currentSizeRef.current.h
+          : Math.round((canvas?.clientHeight || 200) * dpr);
+        dragStartSizeRef.current = { w: curW, h: curH };
+        currentSizeRef.current = { w: curW, h: curH };
         stopCaptureLoop();
         wakeRenderLoop();
       }).then((unlisten) => {
@@ -1288,6 +1337,7 @@ export const LiquidGlassCanvas: React.FC<LiquidGlassCanvasProps> = React.memo(({
         if (!isCurrentGLActive) return;
         isDraggingRef.current = false;
         dragStartPosRef.current = null;
+        dragStartSizeRef.current = null;
         isMovingRef.current = false;
         lastMovedTimeRef.current = 0;
         wakeRenderLoop();
@@ -1298,6 +1348,15 @@ export const LiquidGlassCanvas: React.FC<LiquidGlassCanvasProps> = React.memo(({
             if (pos) {
               currentPosRef.current = { x: pos.x, y: pos.y };
               syncCurrentWatchRect();
+            }
+          })
+          .catch(() => {});
+
+        getCurrentWindow()
+          .outerSize()
+          .then((size) => {
+            if (size && (size.width !== 0 || size.height !== 0)) {
+              currentSizeRef.current = { w: size.width, h: size.height };
             }
           })
           .catch(() => {});
