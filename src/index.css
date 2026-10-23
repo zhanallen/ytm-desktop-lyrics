@@ -9,6 +9,8 @@
   --text-muted: rgba(255, 255, 255, 0.58);
   --text-subtle: rgba(255, 255, 255, 0.32);
 
+  --header-padding: 10px;
+
   /* Expanded Upper Limit for High-Res Large Album Cover Scaling */
   --player-left-col-width: clamp(64px, 22vw - 10px, 260px);
 }
@@ -104,7 +106,7 @@ html, body, #root {
   flex-direction: row;
   align-items: center;
   gap: 8px;
-  padding: 6px 10px;
+  padding: var(--header-padding, 10px);
   flex-shrink: 0;
   width: 100%;
   box-sizing: border-box;
