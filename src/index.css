@@ -63,15 +63,15 @@ html, body, #root {
   transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
-.widget-container.theme-default .header-bar {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+/* Use an inset box-shadow instead of border-bottom so .header-bar preserves an invariant 84px layout height across expanded/collapsed states, preventing stale 85px height reads before React applies .lyrics-hidden on collapse. */
+.widget-container.theme-default:not(.lyrics-hidden) .header-bar {
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.08);
   background: rgba(0, 0, 0, 0.18);
 }
 
+/* Remove CSS border-radius on Liquid Glass container so Chromium's overflow-hidden rounded clip mask does not slice the outer [-aa, aa] SDF anti-aliased corner curvature and rim highlights rendered by LiquidGlassCanvas. */
 .widget-container.theme-liquid-glass {
-  border-radius: 16px !important;
-  clip-path: inset(0 round 16px);
-  -webkit-clip-path: inset(0 round 16px);
+  border-radius: 0 !important;
 }
 
 .widget-container.theme-liquid-glass.is-clickthrough,
