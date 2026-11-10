@@ -102,16 +102,28 @@ export function parseLrc(lrcText: string): LyricLine[] {
 }
 
 /**
+ * Default implicit lead compensation offset in seconds.
+ * Offsets the 0.4s CSS cubic-bezier transition lag and auditory reaction delay,
+ * ensuring lyrics are centered and highlighted exactly when audio syllables begin.
+ */
+export const DEFAULT_LEAD_OFFSET = 0.45;
+
+/**
  * Finds the active lyric line index given current time (in seconds) using O(log N) binary search.
+ * @param lyrics Array of parsed lyric lines
+ * @param currentTime Current playback position in seconds
+ * @param offset Dynamic user-configured sync offset in seconds (default 0)
+ * @param leadOffset Implicit visual transition lead compensation in seconds (default 0.45s)
  */
 export function getActiveLyricIndex(
   lyrics: LyricLine[],
   currentTime: number,
-  offset: number = 0
+  offset: number = 0,
+  leadOffset: number = DEFAULT_LEAD_OFFSET
 ): number {
   if (!lyrics || lyrics.length === 0) return -1;
 
-  const adjustedTime = currentTime + offset;
+  const adjustedTime = currentTime + offset + leadOffset;
 
   if (adjustedTime < lyrics[0].time) return 0;
 

@@ -99,7 +99,8 @@ fn send_player_command(command: String) -> Result<(), String> {
 fn resize_physical_window(window: tauri::Window, width: u32, height: u32) -> Result<(), String> {
     let clamped_w = width.clamp(200, 7680);
     let clamped_h = height.clamp(80, 4320);
-    let _ = window.set_min_size(Some(tauri::Size::Logical(tauri::LogicalSize::new(295.0, 86.0))));
+    // Minimum logical height is 84.0 (64px min cover + 20px vertical header padding) to eliminate trailing bottom whitespace in compact mode.
+    let _ = window.set_min_size(Some(tauri::Size::Logical(tauri::LogicalSize::new(295.0, 84.0))));
     let _ = window.set_max_size(Option::<tauri::Size>::None);
     window.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(clamped_w, clamped_h))).map_err(|e| e.to_string())
 }
@@ -129,7 +130,8 @@ fn lock_window_height(window: tauri::Window, width: u32, height: u32, is_locked:
         DYNAMIC_MIN_PHYS_HEIGHT.store(height as i32, Ordering::SeqCst);
     } else {
         DYNAMIC_MIN_PHYS_HEIGHT.store(0, Ordering::SeqCst);
-        let _ = window.set_min_size(Some(tauri::Size::Logical(tauri::LogicalSize::new(280.0, 86.0))));
+        // Reset logical min height to 84.0 (64px min cover + 20px vertical header padding) when unlocking lyrics expansion.
+        let _ = window.set_min_size(Some(tauri::Size::Logical(tauri::LogicalSize::new(280.0, 84.0))));
     }
     let _ = window.set_max_size(Option::<tauri::Size>::None);
     
@@ -820,8 +822,9 @@ pub mod win32_subclass {
                 } else {
                     let phys_width = (rect.right - rect.left) as f64;
                     let logical_width = phys_width / scale_factor;
+                    // Cover scales down to 64px min; adding 20px vertical header padding (10px top + 10px bottom) converges min height to 84.0, matching WM_GETMINMAXINFO without a 2px drag jump.
                     let album_width = (0.35 * logical_width - 39.25).clamp(64.0, 280.0);
-                    ((album_width + 22.0) * scale_factor).ceil() as i32
+                    ((album_width + 20.0) * scale_factor).ceil() as i32
                 };
 
                 let current_height = rect.bottom - rect.top;
@@ -846,7 +849,8 @@ pub mod win32_subclass {
                 let min_phys_height = if target_min > 0 {
                     target_min
                 } else {
-                    (86.0 * scale_factor).ceil() as i32
+                    // Fallback logical min height is 84.0 (64px min cover + 20px vertical header padding) so compact mode preserves isotropic 10px margins.
+                    (84.0 * scale_factor).ceil() as i32
                 };
 
                 info.ptMinTrackSize.x = min_phys_width;
@@ -1049,6 +1053,10 @@ pub fn run() {
                     std::time::Instant::now() - std::time::Duration::from_millis(100)
                 ));
                 let last_moved_time_clone = last_moved_time.clone();
+                let last_resized_time = std::sync::Arc::new(std::sync::Mutex::new(
+                    std::time::Instant::now() - std::time::Duration::from_millis(100)
+                ));
+                let last_resized_time_clone = last_resized_time.clone();
 
                 window.on_window_event(move |event| {
                     match event {
@@ -1060,15 +1068,21 @@ pub fn run() {
                                 let _ = win_clone.emit("desktop-window-moved", serde_json::json!({ "x": pos.x, "y": pos.y }));
                             }
                         }
-                        tauri::WindowEvent::Resized(_) => {
-                            let _ = win_clone.emit("desktop-window-moved", ());
+                        tauri::WindowEvent::Resized(size) => {
+                            let mut last = last_resized_time_clone.lock().unwrap();
+                            let now = std::time::Instant::now();
+                            if now.duration_since(*last).as_millis() >= 10 {
+                                *last = now;
+                                let _ = win_clone.emit("desktop-window-moved", serde_json::json!({ "w": size.width, "h": size.height }));
+                            }
                         }
                         _ => {}
                     }
                 });
 
                 let _ = window.set_maximizable(false);
-                let _ = window.set_min_size(Some(tauri::Size::Logical(tauri::LogicalSize::new(295.0, 86.0))));
+                // Enforce 84.0 logical min height (64px min cover + 20px vertical header padding) so startup bounds match the compact header layout.
+                let _ = window.set_min_size(Some(tauri::Size::Logical(tauri::LogicalSize::new(295.0, 84.0))));
                 let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize::new(295.0, 163.0)));
 
                 if let Ok(Some(monitor)) = window.primary_monitor() {

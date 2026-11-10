@@ -315,6 +315,7 @@
     console.log('[YT Music Sync] Executing single-channel command:', data.command);
 
     if (data.command === 'playPause') {
+      let handled = false;
       const playBtn = document.querySelector('ytmusic-player-bar #play-pause-button') ||
                       document.querySelector('#play-pause-button') ||
                       document.querySelector('.play-pause-button');
@@ -322,19 +323,26 @@
         const btn = playBtn.querySelector('button') || playBtn.querySelector('tp-yt-paper-icon-button') || playBtn;
         if (typeof btn.click === 'function') {
           btn.click();
-          return;
+          handled = true;
         }
       }
 
-      const v = getActiveVideoElement();
-      if (v) {
-        if (v.paused) {
-          v.play().catch(() => {});
-        } else {
-          v.pause();
+      if (!handled) {
+        const v = getActiveVideoElement();
+        if (v) {
+          if (v.paused) {
+            v.play().catch(() => {});
+          } else {
+            v.pause();
+          }
         }
       }
 
+      // Immediate & delayed double dispatch to ensure state is broadcasted back without waiting for background throttling
+      sendUpdate();
+      setTimeout(sendUpdate, 80);
+      setTimeout(sendUpdate, 250);
+      return;
     } else if (data.command === 'next') {
       const nextBtn = document.querySelector('ytmusic-player-bar #next-button') ||
                       document.querySelector('#next-button') ||
@@ -554,26 +562,20 @@
   function sendUpdate() {
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
 
-    const video = getActiveVideoElement();
-    if (document.hidden && (!video || video.paused)) {
-      return;
-    }
-
     const data = extractTrackData();
     if (!data || !data.title) return;
 
     const now = Date.now();
-    // If paused and track/time haven't changed, throttle transmission to once every 1000ms
-    if (
-      data.isPaused &&
-      lastSentData &&
-      lastSentData.isPaused &&
-      lastSentData.title === data.title &&
-      lastSentData.artist === data.artist &&
-      Math.abs(lastSentData.currentTime - data.currentTime) < 0.05 &&
-      now - lastSentTime < 1000
-    ) {
-      return;
+    const isStateFlipped = !lastSentData || lastSentData.isPaused !== data.isPaused;
+
+    // Only throttle if state has NOT flipped, track is paused, and same position
+    if (!isStateFlipped && data.isPaused && lastSentData) {
+      const isSameTrack = lastSentData.title === data.title && lastSentData.artist === data.artist;
+      const isSameTime = Math.abs(lastSentData.currentTime - data.currentTime) < 0.05;
+      const throttleLimit = document.hidden ? 2000 : 1000;
+      if (isSameTrack && isSameTime && (now - lastSentTime < throttleLimit)) {
+        return;
+      }
     }
 
     try {
@@ -618,6 +620,7 @@
     document.addEventListener('pause', sendUpdate, true);
     document.addEventListener('seeked', sendUpdate, true);
     document.addEventListener('timeupdate', sendUpdate, true);
+    document.addEventListener('visibilitychange', () => sendUpdate(), true);
   }
 
   if (document.readyState === 'loading') {

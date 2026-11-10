@@ -159,6 +159,45 @@ export const App: React.FC = () => {
 };
 
 /**
+ * Computes the physical pixel window height from the measured header bar, container vertical borders,
+ * and optional expanded lyrics height.
+ *
+ * Why/Intent:
+ * - Rounds `.header-bar` layout height (falling back to 84px = 64px min cover + 20px vertical padding)
+ *   to avoid fractional subpixel jitter from CSS transforms/scaling.
+ * - Dynamically adds `.widget-container` vertical borders (`borderTopWidth + borderBottomWidth`) via
+ *   `getComputedStyle`: borderless `theme-liquid-glass` stays at 84px with zero trailing whitespace, while
+ *   `theme-default` (1px top + 1px bottom border) expands to 86px so bottom 2px header padding is never clipped.
+ * - Multiplies by `factor` and applies `Math.floor` once at the end so `syncMinHeight` and
+ *   `handleToggleLyrics` share identical DPI-stable integer physical dimensions.
+ */
+const measureCompactPhysHeight = (
+  factor: number,
+  extraLogical = 0,
+  headerEl?: HTMLElement | null,
+  container?: HTMLElement | null
+): number => {
+  const resolvedHeader = headerEl ?? (document.querySelector('.header-bar') as HTMLElement | null);
+  const resolvedContainer = container ?? (document.querySelector('.widget-container') as HTMLElement | null);
+
+  let headerHeight = 84;
+  if (resolvedHeader) {
+    const rectHeight = resolvedHeader.getBoundingClientRect().height;
+    headerHeight = rectHeight > 0
+      ? Math.round(rectHeight)
+      : (resolvedHeader.scrollHeight > 0 ? resolvedHeader.scrollHeight : 84);
+  }
+
+  let borderY = 0;
+  if (resolvedContainer) {
+    const style = window.getComputedStyle(resolvedContainer);
+    borderY = (parseFloat(style.borderTopWidth) || 0) + (parseFloat(style.borderBottomWidth) || 0);
+  }
+
+  return Math.floor((headerHeight + borderY + extraLogical) * factor);
+};
+
+/**
  * Main Widget Application Component.
  * Contains state for track metadata, synced lyrics, lyric time offset, click-through,
  * lyrics display collapse state, and language preference.
@@ -317,17 +356,18 @@ const MainWidgetApp: React.FC = () => {
   }, []);
 
   /**
-   * Synchronizes DOM header element height with Win32 WM_SIZING hook for dynamic minimum window height clamping.
+   * Synchronizes DOM header element height and active theme border thickness with Win32 WM_SIZING hook
+   * for dynamic minimum window height clamping.
    */
   useEffect(() => {
-    const headerEl = document.querySelector('.header-bar') as HTMLElement;
+    const headerEl = document.querySelector('.header-bar') as HTMLElement | null;
     if (!headerEl) return;
+    const container = document.querySelector('.widget-container') as HTMLElement | null;
 
     const syncMinHeight = () => {
       const factor = window.devicePixelRatio || 1;
-      const headerHeight = headerEl.scrollHeight > 0 ? headerEl.scrollHeight : 84;
       const lyricsExtra = showLyrics ? 116 : 0;
-      const minPhysHeight = Math.floor((headerHeight + 2 + lyricsExtra) * factor);
+      const minPhysHeight = measureCompactPhysHeight(factor, lyricsExtra, headerEl, container);
 
       if (Math.abs(minPhysHeight - lastMinHeightRef.current) >= 1) {
         lastMinHeightRef.current = minPhysHeight;
@@ -354,7 +394,7 @@ const MainWidgetApp: React.FC = () => {
     return () => {
       observer.disconnect();
     };
-  }, [showLyrics, track?.title]);
+  }, [showLyrics, track?.title, uiTheme]);
 
   /**
    * Dispatches playback control commands (playPause, next, previous) via Tauri command.
@@ -391,14 +431,9 @@ const MainWidgetApp: React.FC = () => {
         setShowLyrics(false);
         localStorage.setItem('ytm_show_lyrics', 'false');
 
-        // Collapse to compact mode using Math.floor
-        const headerHeight = headerEl
-          ? (headerEl.getBoundingClientRect().height > 0
-              ? headerEl.getBoundingClientRect().height
-              : (headerEl.scrollHeight > 0 ? headerEl.scrollHeight : 60))
-          : 60;
+        // Collapse to compact mode using the shared helper so DPI rounding and theme border compensation match syncMinHeight
         const physWidth = Math.floor(currentWidth * factor);
-        const physHeight = Math.floor((headerHeight + 2) * factor);
+        const physHeight = measureCompactPhysHeight(factor, 0, headerEl, container);
 
         await invoke('lock_window_height', {
           width: physWidth,
@@ -659,7 +694,16 @@ const MainWidgetApp: React.FC = () => {
     localStorage.setItem('ytm_offset', '0');
   }, []);
 
-  const handlePlayPause = useCallback(() => sendPlayerCommand('playPause'), [sendPlayerCommand]);
+  const handlePlayPause = useCallback(() => {
+    // Optimistic UI state toggle: instant 0ms tactile feedback
+    setTrack(prev => {
+      if (!prev) return prev;
+      const nextState = { ...prev, isPaused: !prev.isPaused };
+      latestTrackRef.current = nextState;
+      return nextState;
+    });
+    sendPlayerCommand('playPause');
+  }, [sendPlayerCommand]);
   const handleNext = useCallback(() => sendPlayerCommand('next'), [sendPlayerCommand]);
   const handlePrevious = useCallback(() => sendPlayerCommand('previous'), [sendPlayerCommand]);
   const handleToggleClickThrough = useCallback(() => toggleClickThrough(), [toggleClickThrough]);
